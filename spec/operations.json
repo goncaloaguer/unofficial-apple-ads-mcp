@@ -1,0 +1,602 @@
+{
+ "source": "apple/apple-ads-platform-api-python",
+ "sdk_commit": "742ba544433ba9a5bef0ab3603336dcf53ff9338",
+ "spec_version": "109",
+ "count": 99,
+ "operations": [
+  {
+   "operation_id": "get_user_acls",
+   "method": "GET",
+   "path": "/v1/acls",
+   "requires_context": "none"
+  },
+  {
+   "operation_id": "ad_accounts_post",
+   "method": "POST",
+   "path": "/v1/ad-accounts",
+   "requires_context": "none"
+  },
+  {
+   "operation_id": "ad_accounts_id_get",
+   "method": "GET",
+   "path": "/v1/ad-accounts/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "ad_accounts_id_put",
+   "method": "PUT",
+   "path": "/v1/ad-accounts/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "adgroups_post",
+   "method": "POST",
+   "path": "/v1/adgroups",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "adgroups_query_post",
+   "method": "POST",
+   "path": "/v1/adgroups/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "adgroups_id_delete",
+   "method": "DELETE",
+   "path": "/v1/adgroups/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "adgroups_id_get",
+   "method": "GET",
+   "path": "/v1/adgroups/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "adgroups_id_put",
+   "method": "PUT",
+   "path": "/v1/adgroups/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "ads_post",
+   "method": "POST",
+   "path": "/v1/ads",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "ads_query_post",
+   "method": "POST",
+   "path": "/v1/ads/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "ads_id_delete",
+   "method": "DELETE",
+   "path": "/v1/ads/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "ads_id_get",
+   "method": "GET",
+   "path": "/v1/ads/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "ads_id_put",
+   "method": "PUT",
+   "path": "/v1/ads/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "get_advertiser_resources",
+   "method": "GET",
+   "path": "/v1/advertiser-resources",
+   "requires_context": "none"
+  },
+  {
+   "operation_id": "get_app_details_by_adam_id",
+   "method": "GET",
+   "path": "/v1/apps/{adamId}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_app_locale_details",
+   "method": "POST",
+   "path": "/v1/apps/{adamId}/locale-details/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_assets",
+   "method": "POST",
+   "path": "/v1/assets/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "upload_asset",
+   "method": "POST",
+   "path": "/v1/assets/upload",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "delete_asset",
+   "method": "DELETE",
+   "path": "/v1/assets/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "get_asset",
+   "method": "GET",
+   "path": "/v1/assets/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_brands",
+   "method": "POST",
+   "path": "/v1/business-brands/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "get_brand",
+   "method": "GET",
+   "path": "/v1/business-brands/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_categories",
+   "method": "POST",
+   "path": "/v1/business-categories/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "get_category",
+   "method": "GET",
+   "path": "/v1/business-categories/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "campaigns_post",
+   "method": "POST",
+   "path": "/v1/campaigns",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "campaigns_query_post",
+   "method": "POST",
+   "path": "/v1/campaigns/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "campaigns_id_delete",
+   "method": "DELETE",
+   "path": "/v1/campaigns/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "campaigns_id_get",
+   "method": "GET",
+   "path": "/v1/campaigns/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "campaigns_id_put",
+   "method": "PUT",
+   "path": "/v1/campaigns/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "campaigns_id_legacy_app_limited_status_reason_details_get",
+   "method": "GET",
+   "path": "/v1/campaigns/{id}/legacy-app-limited-status-reason-details",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_audit_summary",
+   "method": "POST",
+   "path": "/v1/change-history/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "get_change_details",
+   "method": "GET",
+   "path": "/v1/change-history/{detailId}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "creatives_post",
+   "method": "POST",
+   "path": "/v1/creatives",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "creatives_query_post",
+   "method": "POST",
+   "path": "/v1/creatives/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "creatives_id_delete",
+   "method": "DELETE",
+   "path": "/v1/creatives/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "creatives_id_get",
+   "method": "GET",
+   "path": "/v1/creatives/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "creatives_id_put",
+   "method": "PUT",
+   "path": "/v1/creatives/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "eligibilities_apps_query_post",
+   "method": "POST",
+   "path": "/v1/eligibilities/apps/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "impression_share_query",
+   "method": "POST",
+   "path": "/v1/insights/apps/impression-share/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "search_term_popularity_query",
+   "method": "POST",
+   "path": "/v1/insights/apps/search-term-popularity/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "keywords_post",
+   "method": "POST",
+   "path": "/v1/keywords",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "keywords_bulk_create_post",
+   "method": "POST",
+   "path": "/v1/keywords/bulk-create",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "keywords_bulk_update_post",
+   "method": "POST",
+   "path": "/v1/keywords/bulk-update",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "keywords_query_post",
+   "method": "POST",
+   "path": "/v1/keywords/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "keywords_id_delete",
+   "method": "DELETE",
+   "path": "/v1/keywords/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "keywords_id_get",
+   "method": "GET",
+   "path": "/v1/keywords/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "keywords_id_put",
+   "method": "PUT",
+   "path": "/v1/keywords/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "create_location_group",
+   "method": "POST",
+   "path": "/v1/location-groups",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_location_groups",
+   "method": "POST",
+   "path": "/v1/location-groups/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "delete_location_group",
+   "method": "DELETE",
+   "path": "/v1/location-groups/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "get_location_group",
+   "method": "GET",
+   "path": "/v1/location-groups/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "update_location_group",
+   "method": "PUT",
+   "path": "/v1/location-groups/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_locations",
+   "method": "POST",
+   "path": "/v1/locations/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "get_location",
+   "method": "GET",
+   "path": "/v1/locations/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "get_me",
+   "method": "GET",
+   "path": "/v1/me",
+   "requires_context": "none"
+  },
+  {
+   "operation_id": "query_supported_app_languages",
+   "method": "POST",
+   "path": "/v1/metadata/apps/supported-languages/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "negative_keywords_post",
+   "method": "POST",
+   "path": "/v1/negative-keywords",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "negative_keywords_bulk_create_post",
+   "method": "POST",
+   "path": "/v1/negative-keywords/bulk-create",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "negative_keywords_bulk_update_post",
+   "method": "POST",
+   "path": "/v1/negative-keywords/bulk-update",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "negative_keywords_query_post",
+   "method": "POST",
+   "path": "/v1/negative-keywords/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "negative_keywords_id_delete",
+   "method": "DELETE",
+   "path": "/v1/negative-keywords/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "negative_keywords_id_get",
+   "method": "GET",
+   "path": "/v1/negative-keywords/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "negative_keywords_id_put",
+   "method": "PUT",
+   "path": "/v1/negative-keywords/{id}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "orgs_id_get",
+   "method": "GET",
+   "path": "/v1/orgs/{id}",
+   "requires_context": "none"
+  },
+  {
+   "operation_id": "query_product_page_locale_details",
+   "method": "POST",
+   "path": "/v1/product-pages/locale-details/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_product_pages",
+   "method": "POST",
+   "path": "/v1/product-pages/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "get_product_page_by_id",
+   "method": "GET",
+   "path": "/v1/product-pages/{productPageId}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "apply_daily_budget_recommendations",
+   "method": "POST",
+   "path": "/v1/recommendations/daily-budgets/apply",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "dismiss_daily_budget_recommendations",
+   "method": "POST",
+   "path": "/v1/recommendations/daily-budgets/dismiss",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_daily_budget_recommendations",
+   "method": "POST",
+   "path": "/v1/recommendations/daily-budgets/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "apply_target_cpa_recommendations",
+   "method": "POST",
+   "path": "/v1/recommendations/target-cpas/apply",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "dismiss_target_cpa_recommendations",
+   "method": "POST",
+   "path": "/v1/recommendations/target-cpas/dismiss",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_target_cpa_recommendations",
+   "method": "POST",
+   "path": "/v1/recommendations/target-cpas/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "rejection_reasons_apps_query_post",
+   "method": "POST",
+   "path": "/v1/rejection-reasons/apps/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "rejection_reasons_apps_rejection_reason_id_get",
+   "method": "GET",
+   "path": "/v1/rejection-reasons/apps/{rejectionReasonId}",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_rejection_reasons_by_business_brand",
+   "method": "POST",
+   "path": "/v1/rejection-reasons/business-brands/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "apps_ad_group_reports",
+   "method": "POST",
+   "path": "/v1/reports/apps/adgroups/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "apps_ad_reports",
+   "method": "POST",
+   "path": "/v1/reports/apps/ads/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "apps_campaign_reports",
+   "method": "POST",
+   "path": "/v1/reports/apps/campaigns/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "apps_keyword_reports",
+   "method": "POST",
+   "path": "/v1/reports/apps/keywords/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "apps_search_term_reports",
+   "method": "POST",
+   "path": "/v1/reports/apps/searchterms/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "brands_ad_group_reports",
+   "method": "POST",
+   "path": "/v1/reports/business-brands/adgroups/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "brands_ad_reports",
+   "method": "POST",
+   "path": "/v1/reports/business-brands/ads/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "brands_campaign_reports",
+   "method": "POST",
+   "path": "/v1/reports/business-brands/campaigns/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "brands_keyword_reports",
+   "method": "POST",
+   "path": "/v1/reports/business-brands/keywords/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "brands_search_term_reports",
+   "method": "POST",
+   "path": "/v1/reports/business-brands/searchterms/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "search_apps",
+   "method": "GET",
+   "path": "/v1/search/apps",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "search_geos",
+   "method": "GET",
+   "path": "/v1/search/geo",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "get_geos_by_ids",
+   "method": "POST",
+   "path": "/v1/search/geo",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "shared_budgets_post",
+   "method": "POST",
+   "path": "/v1/shared-budgets",
+   "requires_context": "none"
+  },
+  {
+   "operation_id": "shared_budgets_query_post",
+   "method": "POST",
+   "path": "/v1/shared-budgets/query",
+   "requires_context": "optional"
+  },
+  {
+   "operation_id": "shared_budgets_id_delete",
+   "method": "DELETE",
+   "path": "/v1/shared-budgets/{id}",
+   "requires_context": "none"
+  },
+  {
+   "operation_id": "shared_budgets_id_get",
+   "method": "GET",
+   "path": "/v1/shared-budgets/{id}",
+   "requires_context": "optional"
+  },
+  {
+   "operation_id": "shared_budgets_id_put",
+   "method": "PUT",
+   "path": "/v1/shared-budgets/{id}",
+   "requires_context": "none"
+  },
+  {
+   "operation_id": "query_category_suggestions",
+   "method": "POST",
+   "path": "/v1/suggestions/categories/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_keyword_suggestions",
+   "method": "POST",
+   "path": "/v1/suggestions/keywords/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_phrase_suggestions",
+   "method": "POST",
+   "path": "/v1/suggestions/phrases/query",
+   "requires_context": "required"
+  },
+  {
+   "operation_id": "query_target_cpa_suggestion",
+   "method": "POST",
+   "path": "/v1/suggestions/target-cpas/query",
+   "requires_context": "required"
+  }
+ ]
+}

@@ -1,0 +1,95 @@
+{
+ "source": "Apple Ads Platform API v1 \u2014 Managing Reports (developer.apple.com) cross-checked with apple/apple-ads-platform-api-python spec.version 109",
+ "levels": {
+  "campaigns": "/v1/reports/apps/campaigns/query",
+  "adgroups": "/v1/reports/apps/adgroups/query",
+  "ads": "/v1/reports/apps/ads/query",
+  "keywords": "/v1/reports/apps/keywords/query",
+  "searchterms": "/v1/reports/apps/searchterms/query"
+ },
+ "metrics": {
+  "localSpend": "Spend in the account currency (Money)",
+  "impressions": "Ad impressions",
+  "taps": "Taps on the ad",
+  "ttr": "Tap-through rate = taps / impressions",
+  "cpt": "Average cost per tap (Money)",
+  "cpm": "Cost per thousand impressions (Money)",
+  "tapInstalls": "Installs attributed to a tap (tap-through)",
+  "tapInstallCPI": "Cost per tap-through install (Money)",
+  "viewInstalls": "Installs attributed to an impression (view-through)",
+  "totalInstalls": "tapInstalls + viewInstalls",
+  "totalNewDownloads": "First-time downloads (tap + view)",
+  "totalRedownloads": "Re-downloads (tap + view)",
+  "tapNewDownloads": "First-time downloads from taps",
+  "tapRedownloads": "Re-downloads from taps",
+  "viewNewDownloads": "First-time downloads from views",
+  "viewRedownloads": "Re-downloads from views",
+  "totalAvgCPI": "Average cost per install over total installs (Money)",
+  "totalInstallRate": "totalInstalls / taps",
+  "tapInstallRate": "tapInstalls / taps",
+  "tapPreOrdersPlaced": "Pre-orders from taps",
+  "viewPreOrdersPlaced": "Pre-orders from views",
+  "totalPreOrdersPlaced": "Pre-orders (tap + view)"
+ },
+ "money_format": "{amount: string with up to 2 decimals, currency}; this server returns amount as a float",
+ "group_by": {
+  "campaigns": [
+   "deviceClass",
+   "ageRange",
+   "gender",
+   "countryCode",
+   "adminArea",
+   "locality",
+   "storefront",
+   "countryOrRegion"
+  ],
+  "adgroups": [
+   "deviceClass",
+   "ageRange",
+   "gender",
+   "countryCode",
+   "adminArea",
+   "locality",
+   "storefront",
+   "countryOrRegion"
+  ],
+  "keywords": [
+   "deviceClass",
+   "storefront",
+   "countryOrRegion"
+  ],
+  "searchterms": [
+   "deviceClass",
+   "storefront",
+   "countryOrRegion"
+  ],
+  "ads": [
+   "storefront",
+   "countryOrRegion"
+  ]
+ },
+ "granularity": {
+  "HOURLY": "Range must start within the last 7 days; not for ads or searchterms; excludes ageRange/gender/countryCode/adminArea/locality group_by",
+  "DAILY": "Range must start within the last 90 days and span more than one day",
+  "WEEKLY": "Range must start within the last 365 days; end at least 14 days in the past",
+  "MONTHLY": "End at least 90 days in the past",
+  "(none)": "Omit granularity for a single day or for period totals only (totalMetrics only)"
+ },
+ "time_zone": {
+  "UTC": "Coordinated Universal Time",
+  "ORTZ": "Organization time zone (default here; searchterms reports require ORTZ)"
+ },
+ "options.includeRows": {
+  "GRAND_TOTAL": "Adds summary.grandTotal",
+  "EMPTY_METRICS": "Rows for entities with no activity; not with group_by"
+ },
+ "row_shape": {
+  "totalMetrics": "aggregate over the range",
+  "granularMetrics": "per-period metrics when granularity is set (each carries date)",
+  "metadata": "entity attributes (campaign/ad group/keyword/search term\u2026) plus group_by dimension values"
+ },
+ "keyword_rows_extra": "insights.bidRecommendation (Apple's suggested bid range)",
+ "searchterm_rows_extra": "metadata.searchTermText, searchTermSource, keyword{id,text,matchType,bid}, adGroupId, campaignId",
+ "not_available": "Conversion, trial, revenue or ROAS metrics are not part of Apple Ads reporting; join installs with your MMP/subscription data externally.",
+ "page_size": "Apple max 5000; this server caps at MAX_PAGE_SIZE (default 1000)"
+}

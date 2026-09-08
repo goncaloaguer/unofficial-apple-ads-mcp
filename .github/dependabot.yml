@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    ignore:
+      # SDK 2.x is API-incompatible (see docs/API_NOTES.md #10);
+      # migration is a deliberate change, not a routine bump.
+      - dependency-name: "mcp"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

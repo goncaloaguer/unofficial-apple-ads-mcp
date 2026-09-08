@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests, read-only invariants, API drift
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # The invariant + unit suites are stdlib-only by design: they run before
+      # any dependency is installed, so a supply-chain issue can never mask a
+      # safety regression. (test_client_e2e skips itself without httpx.)
+      - name: Read-only invariants and unit tests (no dependencies)
+        run: python -m unittest tests.test_read_only_invariants tests.test_core_units tests.test_reporting -v
+
+      - name: Operation inventory / registry drift check
+        run: python scripts/check_api_drift.py
+
+      - name: Registry regeneration is deterministic
+        run: |
+          cp src/apple_ads_mcp/policy/read_operations.json /tmp/committed.json
+          python scripts/generate_registry.py
+          diff -u /tmp/committed.json src/apple_ads_mcp/policy/read_operations.json
+
+      - name: Inventory re-extracts identically from the pinned Apple SDK commit
+        run: |
+          COMMIT=$(sed -n 's/^commit=//p' spec/SDK_PIN)
+          git clone --quiet https://github.com/apple/apple-ads-platform-api-python /tmp/sdk
+          git -C /tmp/sdk checkout --quiet "$COMMIT"
+          python scripts/check_api_drift.py /tmp/sdk
+
+      - name: Install package (locked SDK range)
+        run: pip install .
+
+      - name: Mocked end-to-end tests (httpx MockTransport, real ES256 signing)
+        run: python -m unittest tests.test_client_e2e -v
+
+      - name: Import smoke test (catches MCP SDK API breakage)
+        run: |
+          python - <<'EOF'
+          import apple_ads_mcp.app as app
+          from mcp.server.fastmcp import FastMCP  # noqa: F401
+          from apple_ads_mcp.config import load_settings, ConfigError
+          try:
+              load_settings({})
+          except ConfigError:
+              pass  # expected: fails fast without credentials
+          else:
+              raise SystemExit("config accepted an empty environment")
+          print("imports OK; empty config correctly rejected")
+          EOF
+
+      - name: Forbid committed secrets (basic patterns)
+        run: |
+          ! grep -rInE "BEGIN (EC )?PRIVATE KEY-----[^-]*[A-Za-z0-9+/]{60}|Bearer [A-Za-z0-9_\-]{30}" \
+            --include="*.py" --include="*.md" --include="*.yml" --include="*.json" \
+            --exclude-dir=".git" . \
+            || (echo "possible committed credential" && exit 1)
