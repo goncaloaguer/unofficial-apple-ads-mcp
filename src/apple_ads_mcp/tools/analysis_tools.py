@@ -75,7 +75,7 @@ def _per_entity(rows: list[dict], level: str) -> list[dict[str, Any]]:
             if extra in first and extra not in entry:
                 entry[extra] = first[extra]
         entry.update(analysis.summarize(group))
-        out.append(entry)
+        out.append(analysis.compact_row(entry))
     return out
 
 
@@ -113,13 +113,15 @@ async def compare_periods(
                 "id": entity_id, "name": label,
                 "comparison": analysis.compare({k: a.get(k) for k in metrics}, {k: b.get(k) for k in metrics}),
             })
-    totals = analysis.compare(analysis.summarize(rows_a), analysis.summarize(rows_b))
+    summary: dict[str, Any] = {"level": level, "period_a": [period_a_start, period_a_end], "period_b": [period_b_start, period_b_end],
+                               "delta_is": "period_b minus period_a; pct_change relative to period_a"}
+    if level != "account":  # at account level `data` already is the totals comparison
+        summary["totals"] = analysis.compare(analysis.summarize(rows_a), analysis.summarize(rows_b))
     return build_envelope(
         data=data,
         meta={"rows_returned": len(data), "period_a_entities": len(rows_a), "period_b_entities": len(rows_b)},
         account_id=account,
-        summary={"level": level, "period_a": [period_a_start, period_a_end], "period_b": [period_b_start, period_b_end],
-                 "totals": totals, "delta_is": "period_b minus period_a; pct_change relative to period_a"},
+        summary=summary,
         warnings=w1 + w2,
         derived_metrics=RATE_PROVENANCE,
         max_response_bytes=ctx.settings.max_response_bytes,
@@ -352,7 +354,7 @@ async def analyze_search_terms(
                  "source": first.get("searchTermSource"),
                  "is_exact_keyword": str(text).strip().lower() in existing.get(cid, set()),
                  **analysis.summarize(group)}
-        terms.append(entry)
+        terms.append(analysis.compact_row(entry))
     expansion = sorted((t for t in terms if not t["is_exact_keyword"] and (t.get("totalInstalls") or 0) >= 1),
                        key=lambda t: (-(t.get("totalInstalls") or 0), t.get("cpi") or 0))[:top_n]
     negatives = sorted((t for t in terms if (t.get("taps") or 0) >= min_taps and not t.get("totalInstalls")),
@@ -360,7 +362,8 @@ async def analyze_search_terms(
     lv = analysis.summarize(low_volume)
     return build_envelope(
         data={"expansion_candidates": expansion, "negative_candidates": negatives,
-              "top_terms_by_installs": sorted(terms, key=lambda t: -(t.get("totalInstalls") or 0))[:top_n]},
+              "top_exact_keyword_terms": sorted((t for t in terms if t["is_exact_keyword"]),
+                                                key=lambda t: -(t.get("totalInstalls") or 0))[:top_n]},
         meta={"rows_returned": len(expansion) + len(negatives), "named_terms": len(terms), "low_volume_rows": len(low_volume)},
         account_id=account,
         summary={"start": start, "end": end, "totals": analysis.summarize(rows),

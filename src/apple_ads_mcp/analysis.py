@@ -31,6 +31,19 @@ RATE_FORMULAS = {
 }
 
 
+# Split metrics that add little in ranked/mined rows; dropped when zero (compact_row).
+SPARSE_WHEN_ZERO = frozenset({
+    "tapPreOrdersPlaced", "viewPreOrdersPlaced", "totalPreOrdersPlaced",
+    "tapNewDownloads", "tapRedownloads", "viewNewDownloads", "viewRedownloads",
+    "viewInstalls", "totalRedownloads",
+})
+
+
+def compact_row(row: dict) -> dict:
+    """Drop sparse split metrics that are zero/None; totals and rates always stay."""
+    return {k: v for k, v in row.items() if not (k in SPARSE_WHEN_ZERO and not v)}
+
+
 def safe_div(numerator: float | None, denominator: float | None) -> float | None:
     if numerator is None or not denominator:
         return None

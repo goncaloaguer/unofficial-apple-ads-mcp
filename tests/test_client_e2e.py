@@ -177,15 +177,28 @@ class FakeApple:
         if path == "/v1/insights/apps/impression-share/query":
             body = json.loads(request.content)
             assert body["timeRange"]["timeZone"] == "UTC" and body["options"]["impressionShareReportType"] in ("FIRST_SLOT", "ALL_SLOTS")
+            ops = {f["field"]: f["operator"] for f in body["filters"]}
+            if ops.get("promotedObjectId") != "IN":  # live 2026-09-22: EQUALS is rejected
+                return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [
+                    {"code": "INVALID_VALUE_FIELD", "message": "Operator 'EQUALS' is not supported for field 'promotedObjectId'."}]}})
+            if "searchTerm" in ops and ops["searchTerm"] != "LIKE":
+                return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [{"code": "INVALID_OPERATOR"}]}})
             rows = [{"day": "2026-08-01", "promotedObjectId": "999", "countryOrRegion": "US", "searchTerm": "adhd", "lowImpressionShare": 0.4, "highImpressionShare": 0.4, "rank": 2, "searchPopularity1to5": 5}]
             return httpx.Response(200, headers=self.rate_headers, json={"result": {"rows": rows}, "pagination": {"offset": 0, "pageSize": 1000, "totalCount": 1}})
         if path == "/v1/insights/apps/search-term-popularity/query":
-            rows = [{"week": "2026-08-02", "countryOrRegion": "US", "genre": "Health & Fitness", "searchTerm": "adhd", "rankInGenre": 3, "searchPopularity1to100": 80}]
+            body = json.loads(request.content)
+            for f in body["filters"]:
+                if f["field"] == "genre" and f["value"] != "HEALTH_AND_FITNESS":  # live: genre is an enum token
+                    return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [{"code": "INVALID_VALUE_FIELD", "message": "Invalid genre value."}]}})
+            rows = [{"week": "2026-08-02", "countryOrRegion": "US", "genre": "HEALTH_AND_FITNESS", "searchTerm": "adhd", "rankInGenre": 3, "searchPopularity1to100": 80}]
             return httpx.Response(200, headers=self.rate_headers, json={"result": {"rows": rows}, "pagination": {"offset": 0, "pageSize": 1000, "totalCount": 1}})
         if path.startswith("/v1/suggestions/") or path.startswith("/v1/recommendations/"):
             body = json.loads(request.content)
             fields = {f["field"]: f["value"] for f in body["filters"]}
             assert isinstance(fields.get("promotedObjectId"), list)
+            if fields.get("promotedObjectType") not in (["APPSTORE_APP"], ["BUSINESS_BRAND"]):  # live: CAMPAIGN rejected
+                return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [
+                    {"code": "INVALID_VALUE_FIELD", "message": "promotedObjectType filter has a invalid value: CAMPAIGN"}]}})
             if path.endswith("keywords/query"):
                 rows = [{"text": "adhd planner", "popularity": 70}, {"text": "focus app", "popularity": 90}]
             elif path.endswith("phrases/query"):
@@ -205,6 +218,8 @@ class FakeApple:
         if path == "/v1/search/geo":
             if request.method == "GET":
                 assert request.url.params["supplySource"] == "APPSTORE"
+                if request.url.params.get("entity") not in (None, "Country", "AdminArea", "Locality", "PostalCode"):
+                    return httpx.Response(200, headers=self.rate_headers, json={"result": []})  # live: upper-case entity -> empty
             else:
                 assert json.loads(request.content)["supplySource"] == "APPSTORE"
             return httpx.Response(200, headers=self.rate_headers, json={"result": [{"id": 2018, "entity": "ADMIN_AREA", "displayName": "California"}]})
@@ -453,7 +468,8 @@ class AnalysisToolTests(ClientTests):
         self.assertEqual(exp, ["adhd planner"])  # has installs and is not an exact keyword
         self.assertEqual(neg, ["adhd meme"])
         self.assertEqual(out["summary"]["low_volume_aggregate"]["installs"], 1)
-        self.assertTrue(next(t for t in out["data"]["top_terms_by_installs"] if t["searchTermText"] == "adhd")["is_exact_keyword"])
+        self.assertEqual([t["searchTermText"] for t in out["data"]["top_exact_keyword_terms"]], ["adhd"])
+        self.assertNotIn("tapPreOrdersPlaced", out["data"]["expansion_candidates"][0])  # compact rows
 
     async def test_account_history_with_details(self):
         from apple_ads_mcp.tools import analysis_tools
@@ -484,7 +500,7 @@ class InsightToolTests(ClientTests):
         await insights.get_impression_share(self.ctx, "999", "2026-08-02", "2026-08-15", granularity="WEEKLY_SUN_SAT")
 
     async def test_popularity_suggestions_recommendations(self):
-        out = await insights.get_search_term_popularity(self.ctx, ["us"], "2026-08-02", "2026-08-08")
+        out = await insights.get_search_term_popularity(self.ctx, ["us"], "2026-08-02", "2026-08-08", genre="Health & Fitness", search_term_contains="adhd")
         self.assertEqual(out["data"][0]["rankInGenre"], 3)
         out = await insights.get_keyword_suggestions(self.ctx, "999", terms=["adhd"], countries=["US"])
         self.assertEqual([k["text"] for k in out["data"]["keywords"]], ["focus app", "adhd planner"])

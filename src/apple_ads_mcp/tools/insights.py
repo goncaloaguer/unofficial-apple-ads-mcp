@@ -160,11 +160,12 @@ async def get_impression_share(
             raise LimitExceeded("WEEKLY_SUN_SAT impression share is limited to 4 weeks")
     budget = ctx.guard("get_impression_share", {"adam_id": adam_id, "start": start, "end": end, "granularity": granularity,
                                                 "report_type": report_type, "countries": countries, "search_term_contains": search_term_contains, "limit": limit, "account_id": account})
-    filters: list[dict[str, Any]] = [{"field": "promotedObjectId", "operator": "EQUALS", "value": str(adam_id)}]
+    # Live 2026-09-22: promotedObjectId rejects EQUALS ("Operator 'EQUALS' is not supported") — IN only.
+    filters: list[dict[str, Any]] = [{"field": "promotedObjectId", "operator": "IN", "value": [str(adam_id)]}]
     if countries:
         filters.append({"field": "countryOrRegion", "operator": "IN", "value": [c.upper() for c in countries]})
     if search_term_contains:
-        filters.append({"field": "searchTerm", "operator": "CONTAINS", "value": search_term_contains})
+        filters.append({"field": "searchTerm", "operator": "LIKE", "value": search_term_contains})
     body = {
         "filters": filters,
         "sorting": [{"field": "highImpressionShare", "order": "DESC"}],
@@ -180,6 +181,12 @@ async def get_impression_share(
                  "note": "lowImpressionShare/highImpressionShare bracket the share (0.91/1.0 = the 91-100% bucket); rank 1 = highest share; searchPopularity1to5 = relative volume"},
         max_response_bytes=ctx.settings.max_response_bytes,
     )
+
+
+def _genre_enum(genre: str) -> str:
+    """Apple returns/accepts genre as an enum token: 'Health & Fitness' -> 'HEALTH_AND_FITNESS' (live 2026-09-22)."""
+    g = genre.strip().upper().replace("&", " AND ")
+    return "_".join(part for part in g.replace("-", " ").replace("/", " ").split() if part)
 
 
 async def get_search_term_popularity(
@@ -204,9 +211,9 @@ async def get_search_term_popularity(
                                                       "genre": genre, "search_term_contains": search_term_contains, "limit": limit, "account_id": account})
     filters: list[dict[str, Any]] = [{"field": "countryOrRegion", "operator": "IN", "value": [c.upper() for c in countries]}]
     if genre:
-        filters.append({"field": "genre", "operator": "EQUALS", "value": genre})
+        filters.append({"field": "genre", "operator": "EQUALS", "value": _genre_enum(genre)})
     if search_term_contains:
-        filters.append({"field": "searchTerm", "operator": "CONTAINS", "value": search_term_contains})
+        filters.append({"field": "searchTerm", "operator": "LIKE", "value": search_term_contains})
     body = {
         "filters": filters,
         "fields": ["rankInGenre", "searchPopularityInGenre", "searchPopularity1to100", "searchPopularity1to5"],
@@ -227,6 +234,8 @@ async def get_search_term_popularity(
 # ------------------------------------------------------- suggestions / recs
 
 def _rec_filters(promoted_object_id: Any, promoted_object_type: str = "APPSTORE_APP", **extra: Any) -> list[dict[str, Any]]:
+    # promotedObjectType accepts only APPSTORE_APP | BUSINESS_BRAND, even when promotedObjectId is a
+    # campaign id (daily-budget / target-CPA recommendations). "CAMPAIGN" is rejected (live 2026-09-22).
     filters = [{"field": "promotedObjectId", "operator": "EQUALS", "value": str(promoted_object_id)},
                {"field": "promotedObjectType", "operator": "EQUALS", "value": promoted_object_type}]
     for field, value in extra.items():
@@ -252,7 +261,8 @@ async def get_keyword_suggestions(
     warnings: list[str] = []
     phrases: list[dict] = []
     try:
-        ph_body = recommendation_query(filters=[{"field": "queryType", "operator": "EQUALS", "value": "SUGGESTION"}] + _rec_filters(adam_id), page_size=limit)
+        ph_body = recommendation_query(filters=[{"field": "queryType", "operator": "EQUALS", "value": "SUGGESTION"}]
+                                       + _rec_filters(adam_id, countriesOrRegions=[c.upper() for c in countries] if countries else None), page_size=limit)
         phrases, _ = await ctx.client.paginate("POST", "/v1/suggestions/phrases/query", budget=budget, account_id=account, json_body=ph_body, max_rows=limit)
     except Exception as exc:
         warnings.append(f"phrase suggestions unavailable: {exc.__class__.__name__}: {exc}")
@@ -291,7 +301,7 @@ async def get_recommendations(
         for cid in campaign_ids:
             try:
                 rows, _ = await ctx.client.paginate("POST", path, budget=budget, account_id=account,
-                                                    json_body=recommendation_query(filters=_rec_filters(cid, "CAMPAIGN"), page_size=50), max_pages=1)
+                                                    json_body=recommendation_query(filters=_rec_filters(cid), page_size=50), max_pages=1)
                 data[name].extend(_money_fields(r) for r in rows)
             except Exception as exc:
                 warnings.append(f"{name} for campaign {cid}: {exc.__class__.__name__}: {exc}")
@@ -371,6 +381,9 @@ async def get_app_details(ctx: AppContext, adam_id: str, account_id: str | None 
                           warnings=warnings, max_response_bytes=ctx.settings.max_response_bytes)
 
 
+_GEO_ENTITIES = {"COUNTRY": "Country", "ADMINAREA": "AdminArea", "LOCALITY": "Locality", "POSTALCODE": "PostalCode"}
+
+
 async def search_geo(
     ctx: AppContext,
     query: str | None = None,
@@ -393,7 +406,11 @@ async def search_geo(
             raise LimitExceeded("provide query or ids")
         params: dict[str, Any] = {"supplySource": "APPSTORE", "query": query, "pageSize": limit, "offset": 0}
         if entity:
-            params["entity"] = entity.upper()
+            # Apple's GeoEntityType enum is CamelCase (Country, AdminArea, Locality, PostalCode); upper-case returns nothing.
+            key = entity.replace("_", "").replace(" ", "").upper()
+            if key not in _GEO_ENTITIES:
+                raise LimitExceeded("entity must be COUNTRY | ADMIN_AREA | LOCALITY | POSTAL_CODE")
+            params["entity"] = _GEO_ENTITIES[key]
         if country_code:
             params["countrycode"] = country_code.upper()
         payload = await ctx.client.request("GET", "/v1/search/geo", budget=budget, account_id=account, params=params)

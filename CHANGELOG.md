@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.1 — Phase 2/3 live-verification fixes
+
+- `get_impression_share`: `promotedObjectId` filter uses `IN` (Apple
+  rejects `EQUALS`); text filter uses `LIKE`.
+- `get_search_term_popularity`: `genre` normalized to Apple's enum token
+  (`Health & Fitness` → `HEALTH_AND_FITNESS`); text filter uses `LIKE`
+  (`CONTAINS` silently returned nothing).
+- `get_recommendations`: `promotedObjectType` is `APPSTORE_APP` for
+  campaign-id queries (`CAMPAIGN` is rejected).
+- `search_geo`: `entity` mapped to Apple's CamelCase enum
+  (`Locality`, `AdminArea`, …); upper-case values returned empty results.
+- `get_keyword_suggestions`: storefronts passed to the phrase query too.
+- Compact analysis rows: zero-valued pre-order/redownload splits dropped
+  from ranked, keyword and search-term rows; `compare_periods` no longer
+  duplicates the account comparison in `summary.totals`;
+  `analyze_search_terms` returns `top_exact_keyword_terms` instead of
+  repeating the expansion candidates.
+- Mock Apple in the e2e suite now enforces the above live rules.
+- docs/API_NOTES.md: items 13–16 live-verified; 16a added.
+
 ## 0.2.0 — Phases 2 and 3: analysis, diagnostics and Apple insights
 
 - **Analysis tools (Phase 2)**: `compare_periods`, `rank_performance`,

@@ -84,21 +84,49 @@ advertiser account. Items marked **TODO-LIVE** are Phase 1 acceptance items
 12. **Rate limits (D).** `RateLimit-Limit/Remaining/Reset` on every
     response; `Retry-After` on 429 (`rate_limit_exceeded`). **TODO-LIVE:**
     actual quota values per endpoint family.
-13. **Change history (D/S).** `eventTime` filter required (max 6 months).
+13. **Change history (D/S/L).** `eventTime` filter required (max 6 months).
     Docs list `eventType` as filterable; the SDK's `AuditFilter` does not —
-    filter client-side. `detailId` = `EntityType.entityId.txnId`.
-    **TODO-LIVE:** whether `metas[]` carries `detailId` with
-    `options.metadata=latest`.
-14. **Insights (D/S).** Impression share needs a `promotedObjectId` filter;
-    DAILY ≤ 30 days or WEEKLY_SUN_SAT ≤ 4 weeks starting on a Sunday; UTC.
-    Search-term popularity: WEEKLY_SUN_SAT (65-week rolling retention,
-    generated Mondays 07:00 UTC) or MONTHLY (15 months, refreshed on the 5th).
-15. **Suggestions/recommendations (S).** Budget/Target-CPA recommendations
-    filter on `promotedObjectId` = *campaign* ID; target-CPA *suggestion*
-    filters on app ID + `promotedObjectType=APPSTORE_APP` and is limited to
-    5 QPS; phrase/category suggestions need `queryType: SUGGESTION|SEARCH`.
-16. **Geo search (S).** Both `GET` and `POST /v1/search/geo` require
-    `supplySource` (`APPSTORE|MAPS`).
+    filter client-side. `detailId` = `EntityType.entityId.txnId`. Verified
+    live: `metas[]` carries `detailId` (plus the entity id keyed by entity
+    type, e.g. `"AdGroup": "…"`, and a `meta` snapshot); the details call
+    returns `entityMetaData` and `details[].changes[{field, oldValues,
+    newValues}]`. `userType` seen: `CUSTOMER_API`; `modifiedBy` is an opaque
+    user id.
+14. **Insights (D/S/L).** Impression share needs a `promotedObjectId` filter
+    — with operator **`IN`** (live: `Operator 'EQUALS' is not supported for
+    field 'promotedObjectId'`); DAILY ≤ 30 days or WEEKLY_SUN_SAT ≤ 4 weeks
+    starting on a Sunday; UTC. Search-term popularity: WEEKLY_SUN_SAT
+    (65-week rolling retention, generated Mondays 07:00 UTC) or MONTHLY (15
+    months, refreshed on the 5th). The insights filter operator for text is
+    `LIKE` (the `QueryFilterOperator` enum has no `CONTAINS`; sending it
+    silently returns zero rows). `genre` is an enum token as returned in
+    rows (`SOCIAL_NETWORKING`, `ENTERTAINMENT`, …); a display name such as
+    `Health & Fitness` is rejected with `Invalid genre value`. Rows returned
+    with no genre filter are ordered genre → rankInGenre, so a small
+    `limit` without a genre filter shows only the first genre.
+15. **Suggestions/recommendations (S/L).** Budget/Target-CPA recommendations
+    filter on `promotedObjectId` = *campaign* ID **but `promotedObjectType`
+    must still be `APPSTORE_APP`** — the enum is only
+    `APPSTORE_APP | BUSINESS_BRAND` and `CAMPAIGN` is rejected (live).
+    Target-CPA *suggestion* filters on app ID + `APPSTORE_APP` and is limited
+    to 5 QPS (live shape: `{suggestedTargetCPA, countryOrRegion: [..]}`, one
+    row per country with ≥ 10 installs in 28 days). Keyword suggestions work
+    (`{text, popularity}`, `totalCount` paginated); phrase suggestions with
+    `queryType: SUGGESTION` returned **HTTP 500** live for an app with 77
+    keyword suggestions — treated as a warning, not a failure.
+    **TODO-LIVE:** whether the 500 is transient.
+16. **Geo search (S/L).** Both `GET` and `POST /v1/search/geo` require
+    `supplySource` (`APPSTORE|MAPS`). The `entity` query parameter is the
+    CamelCase `GeoEntityType` enum (`Country`, `AdminArea`, `Locality`,
+    `PostalCode`); an upper-case value returns an empty result rather than an
+    error (live).
+16a. **Eligibility (L).** `eligibilities/apps/query` returns one row per
+    country × placement × device: `{adamId, supplyPlacement, supplySource,
+    minAge, state: ELIGIBLE|INELIGIBLE, countryOrRegion, deviceClass}`;
+    placements seen: `APPSTORE_SEARCH_RESULTS`, `APPSTORE_SEARCH_TAB`,
+    `APPSTORE_TODAY_TAB`, `APPSTORE_PRODUCT_PAGES`. App details:
+    `primaryGenre` is a path string (`>Mobile Software Applications>Health &
+    Fitness`), not the popularity genre token.
 17. **`productFeatures` / `supplyPlacement` values (L).** Verified live:
     `productFeatures: ["APPSTORE_APP_MANUAL"]` and
     `targeting.supplyPlacement.include: ["APPSTORE_SEARCH_RESULTS"]`, exactly

@@ -14,12 +14,11 @@ step-by-step free-tier Google Cloud Run guide is included.
 > Apple Inc. You are responsible for your own compliance with the
 > [Apple Ads Terms of Service](https://ads.apple.com/terms-of-service).
 
-> **Status: 0.2.0 — Phases 1–3 built; Phase 1 live-verified.** The seven
-> structure and reporting tools run against a real advertiser account on
-> Cloud Run. The analysis and Apple-insights tools (18 more) pass the mocked
-> end-to-end suite and are being live-verified now; Apple behaviours that
-> differ from the docs are recorded in [docs/API_NOTES.md](docs/API_NOTES.md)
-> (a few items remain TODO-LIVE). Plan and rationale in [PLAN.md](PLAN.md).
+> **Status: 0.2.x — all 25 tools live-verified** against a real advertiser
+> account on Cloud Run. Apple behaviours that differ from the docs (operator
+> quirks, enum casing, genre tokens) are recorded in
+> [docs/API_NOTES.md](docs/API_NOTES.md). Plan and rationale in
+> [PLAN.md](PLAN.md).
 
 ## Why this exists
 
