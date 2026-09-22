@@ -170,7 +170,25 @@ deploys, so only the image changes. If a release adds or changes tool
 parameters, chat clients that cache tool schemas (claude.ai custom
 connectors do) need a disconnect/reconnect to see them.
 
-## 9. Rotation
+## 9. Tuning the safety ceilings
+
+Chat clients that pull one report per campaign per period can exhaust the
+default 60 tool calls per rolling hour (the server then refuses with
+"tool-call budget reached" until the window rolls over). Raise it with an
+environment variable — no redeploy of code needed:
+
+```bash
+gcloud run services update apple-ads-mcp --region europe-west1 \
+  --update-env-vars MAX_TOOL_CALLS_PER_HOUR=200
+```
+
+Hard caps: 500 calls/hour and 50 upstream requests per call
+(`MAX_SUBREQUESTS_PER_CALL`). Prefer the analysis tools (`compare_periods`,
+`analyze_trends` with `per_campaign=true`, `rank_performance`) over
+repeated `get_report` calls; they answer multi-campaign, multi-period
+questions in one call.
+
+## 10. Rotation
 
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(32))" | tr -d '\n' \

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.6 — tunable ceilings
+
+- `MAX_TOOL_CALLS_PER_HOUR` (default 60, hard cap 500) and
+  `MAX_SUBREQUESTS_PER_CALL` (default 20, hard cap 50) can now be set in the
+  environment; invalid values fail startup. docs/DEPLOY_GCP.md §9.
+
 ## 0.2.5 — genre list recorded
 
 - Apple's 15 popularity genres enumerated live and documented; `genre`

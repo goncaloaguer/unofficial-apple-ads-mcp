@@ -51,7 +51,10 @@ class Settings:
     transport: str  # "stdio" | "http"
     host: str = "0.0.0.0"
     port: int = 8080
-    # Safety ceilings (PLAN.md §7) — operator may lower, not raise via MCP
+    # Safety ceilings (PLAN.md §7) — tunable by the operator through the
+    # environment (MAX_TOOL_CALLS_PER_HOUR, MAX_SUBREQUESTS_PER_CALL), never
+    # via MCP, and capped by HARD_CEILINGS so a misconfiguration cannot
+    # remove the loop protection entirely.
     max_tool_calls_per_hour: int = 60
     max_subrequests_per_call: int = 20
     max_concurrent_subrequests: int = 4
@@ -68,7 +71,7 @@ class Settings:
     max_response_bytes: int = 40_000
     api_base_url: str = "https://api.ads.apple.com"  # registry paths carry the /v1 prefix
     token_url: str = "https://appleid.apple.com/auth/oauth2/token"
-    user_agent: str = "apple-ads-insights-mcp/0.2.5 (+https://github.com/goncaloaguer/unofficial-apple-ads-mcp)"
+    user_agent: str = "apple-ads-insights-mcp/0.2.6 (+https://github.com/goncaloaguer/unofficial-apple-ads-mcp)"
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -101,6 +104,24 @@ def _read_private_key(problems: list[str]) -> str:
             "(-----BEGIN EC PRIVATE KEY----- or -----BEGIN PRIVATE KEY-----)"
         )
     return pem
+
+
+HARD_CEILINGS = {"MAX_TOOL_CALLS_PER_HOUR": 500, "MAX_SUBREQUESTS_PER_CALL": 50}
+
+
+def _ceiling(raw: str | None, default: int, name: str, problems: list[str]) -> int:
+    """Parse an operator-set ceiling: positive integer, never above HARD_CEILINGS."""
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        problems.append(f"{name} must be an integer (got {raw!r})")
+        return default
+    if value < 1:
+        problems.append(f"{name} must be >= 1")
+        return default
+    return min(value, HARD_CEILINGS[name])
 
 
 def load_settings(env: dict[str, str] | None = None) -> Settings:
@@ -195,6 +216,9 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
         access_token = None
         path_secret = None
 
+    tool_calls = _ceiling(_get("MAX_TOOL_CALLS_PER_HOUR"), 60, "MAX_TOOL_CALLS_PER_HOUR", problems)
+    subrequests = _ceiling(_get("MAX_SUBREQUESTS_PER_CALL"), 20, "MAX_SUBREQUESTS_PER_CALL", problems)
+
     if problems:
         raise ConfigError("; ".join(problems))
 
@@ -212,5 +236,7 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
         transport=transport,
         port=int(_get("PORT") or "8080"),
         max_response_bytes=int(_get("MAX_RESPONSE_BYTES") or 40_000),
+        max_tool_calls_per_hour=tool_calls,
+        max_subrequests_per_call=subrequests,
         warnings=tuple(warnings),
     )

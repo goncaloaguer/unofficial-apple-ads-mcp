@@ -115,8 +115,9 @@ periodically, and prefer bearer mode when possible.
   (`APPLE_ADS_REQUIRE_READONLY_ROLE=true` refuses to start). It cannot write
   either way.
 - Mandatory `ALLOWED_ACCOUNT_IDS`; every tool call re-checks the account.
-- Rate/loop safeguards: 60 tool calls per rolling hour, 20 upstream requests
-  per call, duplicate-call suppression, 90-day report ceiling, bounded rows,
+- Rate/loop safeguards: 60 tool calls per rolling hour and 20 upstream
+  requests per call by default (`MAX_TOOL_CALLS_PER_HOUR` /
+  `MAX_SUBREQUESTS_PER_CALL`, hard-capped at 500 / 50), duplicate-call suppression, 90-day report ceiling, bounded rows,
   pages, and response size; `RateLimit-*` headers honored.
 - No database, no persistent cache, no payload logging. Report rows, entity
   names, search terms and key material never appear in logs.

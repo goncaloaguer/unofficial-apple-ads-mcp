@@ -36,6 +36,22 @@ def settings(**overrides):
     return load_settings({**BASE_ENV, **overrides})
 
 
+class CeilingEnvTests(unittest.TestCase):
+    def test_defaults_and_overrides(self):
+        s = settings()
+        self.assertEqual((s.max_tool_calls_per_hour, s.max_subrequests_per_call), (60, 20))
+        s = settings(MAX_TOOL_CALLS_PER_HOUR="200", MAX_SUBREQUESTS_PER_CALL="30")
+        self.assertEqual((s.max_tool_calls_per_hour, s.max_subrequests_per_call), (200, 30))
+
+    def test_hard_cap_and_validation(self):
+        self.assertEqual(settings(MAX_TOOL_CALLS_PER_HOUR="99999").max_tool_calls_per_hour, 500)
+        self.assertEqual(settings(MAX_SUBREQUESTS_PER_CALL="99999").max_subrequests_per_call, 50)
+        from apple_ads_mcp.config import ConfigError
+        for bad in ("0", "-5", "lots"):
+            with self.assertRaises(ConfigError):
+                settings(MAX_TOOL_CALLS_PER_HOUR=bad)
+
+
 class ConfigTests(unittest.TestCase):
     def test_minimal_stdio(self):
         s = settings()
