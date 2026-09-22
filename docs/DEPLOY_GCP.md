@@ -149,7 +149,28 @@ Monthly 2-minute check: Cloud Run billable time ≈ 0, Artifact Registry storage
 (keep ≤3 images), active secret versions (≤6; destroy rotated-out versions),
 no unexpected resources.
 
-## 8. Rotation
+## 8. Upgrading (one command)
+
+For every later version, `scripts/release.sh` commits, pushes, tags, builds
+the image with the version from `pyproject.toml`, and redeploys. Put your
+coordinates in a git-ignored `deploy.env` once:
+
+```bash
+cat > deploy.env <<'ENV'
+GCP_PROJECT=your-project-id
+GCP_REGION=europe-west1
+AR_REPO=mcp
+SERVICE=apple-ads-mcp
+ENV
+scripts/release.sh "0.3.0: what changed"
+```
+
+The service keeps its environment variables and secret bindings across
+deploys, so only the image changes. If a release adds or changes tool
+parameters, chat clients that cache tool schemas (claude.ai custom
+connectors do) need a disconnect/reconnect to see them.
+
+## 9. Rotation
 
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(32))" | tr -d '\n' \

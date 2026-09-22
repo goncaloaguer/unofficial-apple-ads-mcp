@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.5 — genre list recorded
+
+- Apple's 15 popularity genres enumerated live and documented; `genre`
+  accepts the App Store names Apple merges (`Productivity` →
+  `PRODUCTIVITY_UTILITIES`, `News` → `NEW_PUBLICATION`). No schema change.
+- `scripts/release.sh`: one-command commit/push/tag/build/deploy using a
+  git-ignored `deploy.env` (docs/DEPLOY_GCP.md §8). PLAN.md status updated.
+
 ## 0.2.4 — genre discovery
 
 - `get_search_term_popularity(list_genres=true)`: enumerates the genre

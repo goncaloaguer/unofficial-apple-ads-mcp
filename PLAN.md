@@ -2,7 +2,7 @@
 
 ## Combined product, security, implementation, and release plan
 
-**Status:** Draft v1 for approval — decisions in §18 taken on 2026-09-02; validation log in §21
+**Status:** Executed — Phases 1–3 built and live-verified (0.2.x, 2026-09-22); Phases 4–5 delivered with 0.1.0. Decisions in §18 taken on 2026-09-02; validation log in §21; live deviations from this plan are in docs/API_NOTES.md.
 **Date:** September 2, 2026
 **Deployment model:** Open-source software; each user deploys a private instance in their own Google Cloud project or runs it locally
 **Safety posture:** Permanently read-only
@@ -424,10 +424,12 @@ Deliverables: package, lock, Dockerfile; config; Apple OAuth token manager; poli
 Acceptance: works locally and on a private Cloud Run test deployment against a live account; rejects non-allowlisted accounts; no Apple response data in logs; invariants pass; §3.3 uncertainties resolved into API_NOTES.
 
 ### Phase 2 — Analysis
+Done 0.2.0; live-verified 0.2.1–0.2.5.
 `compare_periods`, `rank_performance`, `analyze_trends`, `analyze_pacing`, `analyze_keywords`, `analyze_search_terms`, `get_account_history`.
 Acceptance: every derived value carries a formula; N+1 avoided; recent-data warnings accurate; search-term text treated as untrusted.
 
 ### Phase 3 — Diagnostics, insights, planning
+Done 0.2.0; live-verified 0.2.1–0.2.5 (operator/enum quirks recorded in API_NOTES §14–16a).
 `diagnose_delivery`, `check_app_eligibility`, `get_impression_share`, `get_search_term_popularity`, `get_keyword_suggestions`, `get_recommendations`, `get_target_cpa_suggestion`, `search_apps`, `search_geo`, `get_supported_languages`, `get_app_details`; resources; prompts.
 Acceptance: composites respect concurrency/rate budgets; partial failures visible; insights window validation (Sunday alignment, 30-day/4-week caps) enforced before calling Apple.
 

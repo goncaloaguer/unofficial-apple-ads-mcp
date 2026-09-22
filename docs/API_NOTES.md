@@ -105,7 +105,14 @@ advertiser account. Items marked **TODO-LIVE** are Phase 1 acceptance items
     conjunction is dropped; `HEALTH_AND_FITNESS` and the display name
     `Health & Fitness` are both rejected with `Invalid genre value`, and so
     are `PRODUCTIVITY` and `MEDICAL` — the set is not the App Store category
-    list; `list_genres=true` enumerates it from the report itself). Up to
+    list). Enumerated live for the US storefront, 2026-09-06 week (15 genres,
+    500 terms each, complete): `BUSINESS`, `EDUCATION`, `ENTERTAINMENT`,
+    `FINANCE`, `FOOD_DRINK`, `GAMES`, `HEALTH_FITNESS`, `LIFESTYLE`,
+    `NEW_PUBLICATION`, `PHOTO_VIDEO`, `PRODUCTIVITY_UTILITIES`, `SHOPPING`,
+    `SOCIAL_NETWORKING`, `SPORTS`, `TRAVEL`. Apple merges categories
+    (Productivity + Utilities, News + Magazines) and omits Medical, Music,
+    Navigation, Reference, Weather, Books, Developer Tools, Graphics &
+    Design. `list_genres=true` re-derives the list for any storefront. Up to
     500 terms per country × genre; the ADHD terms this account bids on were
     not in the US Health & Fitness top 500 for a September 2026 week. Rows returned
     with no genre filter are ordered genre → rankInGenre, so a small

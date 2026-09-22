@@ -143,6 +143,7 @@ service. The full reasoning is in
 pip install -e ".[dev]"
 python3 -m unittest discover tests       # invariants, units, mocked end-to-end
 python3 scripts/check_api_drift.py       # inventory/registry drift gate
+scripts/release.sh "message"             # commit, push, tag, build, deploy (docs/DEPLOY_GCP.md §8)
 ```
 
 The operation inventory lives in `spec/operations.json`, extracted from

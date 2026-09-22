@@ -196,11 +196,23 @@ async def get_impression_share(
     )
 
 
+# Apple's popularity genres (US, live 2026-09-22): merged categories, not the App Store list.
+KNOWN_GENRES = (
+    "BUSINESS", "EDUCATION", "ENTERTAINMENT", "FINANCE", "FOOD_DRINK", "GAMES", "HEALTH_FITNESS", "LIFESTYLE",
+    "NEW_PUBLICATION", "PHOTO_VIDEO", "PRODUCTIVITY_UTILITIES", "SHOPPING", "SOCIAL_NETWORKING", "SPORTS", "TRAVEL",
+)
+_GENRE_ALIASES = {"PRODUCTIVITY": "PRODUCTIVITY_UTILITIES", "UTILITIES": "PRODUCTIVITY_UTILITIES",
+                  "NEWS": "NEW_PUBLICATION", "MAGAZINES_NEWSPAPERS": "NEW_PUBLICATION", "NEWS_PUBLICATION": "NEW_PUBLICATION",
+                  "PHOTO_AND_VIDEO": "PHOTO_VIDEO", "FOOD_AND_DRINK": "FOOD_DRINK", "HEALTH_AND_FITNESS": "HEALTH_FITNESS"}
+
+
 def _genre_enum(genre: str) -> str:
     """Apple's genre token drops the conjunction: 'Health & Fitness' -> 'HEALTH_FITNESS',
-    'Food & Drink' -> 'FOOD_DRINK' (live 2026-09-22; HEALTH_AND_FITNESS is rejected)."""
+    'Food & Drink' -> 'FOOD_DRINK' (live 2026-09-22; HEALTH_AND_FITNESS is rejected).
+    Common App Store names that Apple merges (Productivity, News) are mapped to the merged token."""
     g = genre.strip().upper().replace("&", " ").replace("-", " ").replace("/", " ")
-    return "_".join(part for part in g.split() if part and part != "AND")
+    token = "_".join(part for part in g.split() if part and part != "AND")
+    return _GENRE_ALIASES.get(token, token)
 
 
 async def get_search_term_popularity(

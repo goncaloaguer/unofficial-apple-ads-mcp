@@ -519,6 +519,9 @@ class InsightToolTests(ClientTests):
             self.assertEqual(insights._genre_enum(raw), "HEALTH_FITNESS")
         self.assertEqual(insights._genre_enum("Social Networking"), "SOCIAL_NETWORKING")
         self.assertEqual(insights._genre_enum("Food & Drink"), "FOOD_DRINK")
+        self.assertEqual(insights._genre_enum("Productivity"), "PRODUCTIVITY_UTILITIES")  # Apple merges categories
+        self.assertEqual(insights._genre_enum("News"), "NEW_PUBLICATION")
+        self.assertEqual(len(insights.KNOWN_GENRES), 15)
 
     async def test_popularity_suggestions_recommendations(self):
         out = await insights.get_search_term_popularity(self.ctx, ["us"], "2026-08-02", "2026-08-08", genre="Health & Fitness", search_term_contains="adhd")

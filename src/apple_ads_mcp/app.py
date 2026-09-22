@@ -344,7 +344,8 @@ def build_server(ctx: AppContext):
     ) -> dict:
         """Apple's most-searched terms by storefront and genre (WEEKLY_SUN_SAT or MONTHLY), with rank and 1-100 popularity.
 
-        genre: Apple genre token, e.g. HEALTH_FITNESS, SOCIAL_NETWORKING, ENTERTAINMENT — not the App Store category names ('Health &
+        genre: one of BUSINESS, EDUCATION, ENTERTAINMENT, FINANCE, FOOD_DRINK, GAMES, HEALTH_FITNESS, LIFESTYLE,
+        NEW_PUBLICATION, PHOTO_VIDEO, PRODUCTIVITY_UTILITIES, SHOPPING, SOCIAL_NETWORKING, SPORTS, TRAVEL ('Health &
         Fitness' is normalized; the conjunction is dropped). Omit for all genres. search_term_contains is matched
         locally over up to 500 terms per genre (pass a genre to keep the scan small). list_genres=true returns the
         genre tokens Apple accepts for the given countries instead of terms (walks the whole report once)."""
