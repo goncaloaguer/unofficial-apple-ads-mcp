@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.2 — second Phase 2/3 live round
+
+- `get_impression_share` / `get_search_term_popularity`: `search_term_contains`
+  is now matched locally — Apple's insights filters accept neither
+  `CONTAINS` (silently empty) nor `LIKE` (rejected); `meta.rows_scanned`
+  reports the scan size.
+- `search_geo`: id resolution requires `entity` (Apple: "Each geoRequest
+  must have entity"); ids sent as strings per the SDK model.
+- Verified live after 0.2.1: impression share (394 rows/week for one app
+  and storefront), recommendations query accepted (no active
+  recommendations on the test account), geo name search for Country and
+  AdminArea.
+
 ## 0.2.1 — Phase 2/3 live-verification fixes
 
 - `get_impression_share`: `promotedObjectId` filter uses `IN` (Apple

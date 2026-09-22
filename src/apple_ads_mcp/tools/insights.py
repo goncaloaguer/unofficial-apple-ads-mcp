@@ -127,6 +127,17 @@ async def check_app_eligibility(
 
 # ------------------------------------------------------------------ insights
 
+def _filter_terms(rows: list[dict], contains: str | None, want: int, meta: dict[str, Any]) -> list[dict]:
+    """Case-insensitive substring filter on searchTerm, applied locally (Apple's insights
+    endpoints reject CONTAINS and LIKE). meta records how many rows were scanned."""
+    if not contains:
+        return rows[:want]
+    needle = contains.strip().lower()
+    meta["rows_scanned"] = len(rows)
+    meta["text_filter"] = "local substring match on searchTerm (Apple insights filters have no text operator)"
+    return [r for r in rows if needle in str(r.get("searchTerm", "")).lower()][:want]
+
+
 def _sunday_on_or_before(d: dt.date) -> dt.date:
     return d - dt.timedelta(days=(d.weekday() + 1) % 7)
 
@@ -164,8 +175,7 @@ async def get_impression_share(
     filters: list[dict[str, Any]] = [{"field": "promotedObjectId", "operator": "IN", "value": [str(adam_id)]}]
     if countries:
         filters.append({"field": "countryOrRegion", "operator": "IN", "value": [c.upper() for c in countries]})
-    if search_term_contains:
-        filters.append({"field": "searchTerm", "operator": "LIKE", "value": search_term_contains})
+    # Insights endpoints accept neither CONTAINS nor LIKE on searchTerm (live 2026-09-22) — filtered locally.
     body = {
         "filters": filters,
         "sorting": [{"field": "highImpressionShare", "order": "DESC"}],
@@ -173,8 +183,11 @@ async def get_impression_share(
         "pagination": {"offset": 0, "pageSize": min(1000, ctx.settings.max_page_size)},
         "options": {"impressionShareReportType": report_type.upper()},
     }
+    want = max(1, min(limit, ctx.settings.max_report_rows))
     rows, meta = await ctx.client.paginate("POST", "/v1/insights/apps/impression-share/query", budget=budget, account_id=account,
-                                           json_body=body, result_key="rows", max_rows=max(1, min(limit, ctx.settings.max_report_rows)))
+                                           json_body=body, result_key="rows",
+                                           max_rows=ctx.settings.max_report_rows if search_term_contains else want)
+    rows = _filter_terms(rows, search_term_contains, want, meta)
     return build_envelope(
         data=rows, meta=meta, account_id=account,
         summary={"adam_id": adam_id, "granularity": granularity, "report_type": report_type.upper(), "rows": len(rows),
@@ -212,8 +225,6 @@ async def get_search_term_popularity(
     filters: list[dict[str, Any]] = [{"field": "countryOrRegion", "operator": "IN", "value": [c.upper() for c in countries]}]
     if genre:
         filters.append({"field": "genre", "operator": "EQUALS", "value": _genre_enum(genre)})
-    if search_term_contains:
-        filters.append({"field": "searchTerm", "operator": "LIKE", "value": search_term_contains})
     body = {
         "filters": filters,
         "fields": ["rankInGenre", "searchPopularityInGenre", "searchPopularity1to100", "searchPopularity1to5"],
@@ -221,8 +232,11 @@ async def get_search_term_popularity(
         "timeRange": {"start": s.isoformat(), "end": e.isoformat(), "timeZone": "UTC", "granularity": granularity},
         "pagination": {"offset": 0, "pageSize": min(1000, ctx.settings.max_page_size)},
     }
+    want = max(1, min(limit, ctx.settings.max_report_rows))
     rows, meta = await ctx.client.paginate("POST", "/v1/insights/apps/search-term-popularity/query", budget=budget, account_id=account,
-                                           json_body=body, result_key="rows", max_rows=max(1, min(limit, ctx.settings.max_report_rows)))
+                                           json_body=body, result_key="rows",
+                                           max_rows=ctx.settings.max_report_rows if search_term_contains else want)
+    rows = _filter_terms(rows, search_term_contains, want, meta)
     return build_envelope(
         data=rows, meta=meta, account_id=account,
         summary={"countries": countries, "granularity": granularity, "genre": genre, "rows": len(rows),
@@ -397,20 +411,25 @@ async def search_geo(
     account = resolve_account(ctx.settings, account_id)
     budget = ctx.guard("search_geo", {"query": query, "entity": entity, "country_code": country_code, "ids": ids, "limit": limit, "account_id": account})
     limit = max(1, min(limit, 500))
+    geo_entity = None
+    if entity:
+        # Apple's GeoEntityType enum is CamelCase (Country, AdminArea, Locality, PostalCode); upper-case returns nothing (live).
+        key = entity.replace("_", "").replace(" ", "").upper()
+        if key not in _GEO_ENTITIES:
+            raise LimitExceeded("entity must be COUNTRY | ADMIN_AREA | LOCALITY | POSTAL_CODE")
+        geo_entity = _GEO_ENTITIES[key]
     if ids:
-        body = {"geoRequest": [{"id": int(i)} if str(i).isdigit() else {"legacyId": str(i)} for i in ids[:limit]],
+        if not geo_entity:  # live 2026-09-22: "Each geoRequest must have entity" (absent from the SDK model)
+            raise LimitExceeded("entity is required with ids (ad-group adminArea targeting ids -> ADMIN_AREA; country ids -> COUNTRY)")
+        body = {"geoRequest": [{**({"id": str(i)} if str(i).isdigit() else {"legacyId": str(i)}), "entity": geo_entity} for i in ids[:limit]],
                 "supplySource": "APPSTORE", "pagination": {"offset": 0, "pageSize": limit}}
         payload = await ctx.client.request("POST", "/v1/search/geo", budget=budget, account_id=account, json_body=body)
     else:
         if not query:
             raise LimitExceeded("provide query or ids")
         params: dict[str, Any] = {"supplySource": "APPSTORE", "query": query, "pageSize": limit, "offset": 0}
-        if entity:
-            # Apple's GeoEntityType enum is CamelCase (Country, AdminArea, Locality, PostalCode); upper-case returns nothing.
-            key = entity.replace("_", "").replace(" ", "").upper()
-            if key not in _GEO_ENTITIES:
-                raise LimitExceeded("entity must be COUNTRY | ADMIN_AREA | LOCALITY | POSTAL_CODE")
-            params["entity"] = _GEO_ENTITIES[key]
+        if geo_entity:
+            params["entity"] = geo_entity
         if country_code:
             params["countrycode"] = country_code.upper()
         payload = await ctx.client.request("GET", "/v1/search/geo", budget=budget, account_id=account, params=params)

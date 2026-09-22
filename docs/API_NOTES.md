@@ -97,9 +97,10 @@ advertiser account. Items marked **TODO-LIVE** are Phase 1 acceptance items
     field 'promotedObjectId'`); DAILY ≤ 30 days or WEEKLY_SUN_SAT ≤ 4 weeks
     starting on a Sunday; UTC. Search-term popularity: WEEKLY_SUN_SAT
     (65-week rolling retention, generated Mondays 07:00 UTC) or MONTHLY (15
-    months, refreshed on the 5th). The insights filter operator for text is
-    `LIKE` (the `QueryFilterOperator` enum has no `CONTAINS`; sending it
-    silently returns zero rows). `genre` is an enum token as returned in
+    months, refreshed on the 5th). Insights filters have **no text
+    operator**: `CONTAINS` silently returns zero rows and `LIKE` is rejected
+    (`Invalid value 'LIKE' for field 'filters[n].operator'`), so search-term
+    text matching is done locally here. `genre` is an enum token as returned in
     rows (`SOCIAL_NETWORKING`, `ENTERTAINMENT`, …); a display name such as
     `Health & Fitness` is rejected with `Invalid genre value`. Rows returned
     with no genre filter are ordered genre → rankInGenre, so a small
@@ -119,7 +120,12 @@ advertiser account. Items marked **TODO-LIVE** are Phase 1 acceptance items
     `supplySource` (`APPSTORE|MAPS`). The `entity` query parameter is the
     CamelCase `GeoEntityType` enum (`Country`, `AdminArea`, `Locality`,
     `PostalCode`); an upper-case value returns an empty result rather than an
-    error (live).
+    error (live). `POST /v1/search/geo` requires `entity` inside every
+    `geoRequest` item (`Each geoRequest must have entity`) although the SDK's
+    `GeoRequest` model only declares `id`/`legacyId`. Localities are not
+    available for every storefront (e.g. none for PT; plenty for US).
+    Response rows: `{id, legacyId ("US|CA"), entity, displayName,
+    countryOrRegion, adminArea?, locality?}`.
 16a. **Eligibility (L).** `eligibilities/apps/query` returns one row per
     country × placement × device: `{adamId, supplyPlacement, supplySource,
     minAge, state: ELIGIBLE|INELIGIBLE, countryOrRegion, deviceClass}`;

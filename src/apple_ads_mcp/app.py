@@ -344,7 +344,7 @@ def build_server(ctx: AppContext):
         """Apple's most-searched terms by storefront and genre (WEEKLY_SUN_SAT or MONTHLY), with rank and 1-100 popularity.
 
         genre: Apple genre token, e.g. HEALTH_AND_FITNESS, PRODUCTIVITY, SOCIAL_NETWORKING ('Health & Fitness' is
-        normalized). Omit for all genres. search_term_contains is a LIKE match on the term."""
+        normalized). Omit for all genres. search_term_contains is matched locally (pass a genre to keep the scan small)."""
         return await insights.get_search_term_popularity(ctx, countries, start, end, granularity, genre, search_term_contains, limit, account_id)
 
     @mcp.tool()
@@ -393,8 +393,9 @@ def build_server(ctx: AppContext):
         limit: int = 50,
         account_id: str | None = None,
     ) -> dict:
-        """Geo targeting lookup: search by name (entity: COUNTRY | ADMIN_AREA | LOCALITY | POSTAL_CODE, optional country_code)
-        or resolve numeric geo IDs seen in ad-group targeting (ids=[...])."""
+        """Geo targeting lookup: search by name (entity: COUNTRY | ADMIN_AREA | LOCALITY | POSTAL_CODE, optional
+        country_code; localities exist only for some storefronts) or resolve numeric geo IDs seen in ad-group
+        targeting (ids=[...] plus the matching entity, e.g. adminArea ids -> ADMIN_AREA)."""
         return await insights.search_geo(ctx, query, entity, country_code, ids, limit, account_id)
 
     @mcp.tool()

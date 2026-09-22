@@ -181,13 +181,17 @@ class FakeApple:
             if ops.get("promotedObjectId") != "IN":  # live 2026-09-22: EQUALS is rejected
                 return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [
                     {"code": "INVALID_VALUE_FIELD", "message": "Operator 'EQUALS' is not supported for field 'promotedObjectId'."}]}})
-            if "searchTerm" in ops and ops["searchTerm"] != "LIKE":
-                return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [{"code": "INVALID_OPERATOR"}]}})
+            if "searchTerm" in ops:  # live: neither CONTAINS nor LIKE is accepted on insights filters
+                return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [
+                    {"code": "INVALID_VALUE_FIELD", "message": f"Invalid value '{ops['searchTerm']}' for field 'filters[1].operator'."}]}})
             rows = [{"day": "2026-08-01", "promotedObjectId": "999", "countryOrRegion": "US", "searchTerm": "adhd", "lowImpressionShare": 0.4, "highImpressionShare": 0.4, "rank": 2, "searchPopularity1to5": 5}]
             return httpx.Response(200, headers=self.rate_headers, json={"result": {"rows": rows}, "pagination": {"offset": 0, "pageSize": 1000, "totalCount": 1}})
         if path == "/v1/insights/apps/search-term-popularity/query":
             body = json.loads(request.content)
             for f in body["filters"]:
+                if f["field"] == "searchTerm":
+                    return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [
+                        {"code": "INVALID_VALUE_FIELD", "message": f"Invalid value '{f['operator']}' for field 'filters[2].operator'."}]}})
                 if f["field"] == "genre" and f["value"] != "HEALTH_AND_FITNESS":  # live: genre is an enum token
                     return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [{"code": "INVALID_VALUE_FIELD", "message": "Invalid genre value."}]}})
             rows = [{"week": "2026-08-02", "countryOrRegion": "US", "genre": "HEALTH_AND_FITNESS", "searchTerm": "adhd", "rankInGenre": 3, "searchPopularity1to100": 80}]
@@ -221,7 +225,10 @@ class FakeApple:
                 if request.url.params.get("entity") not in (None, "Country", "AdminArea", "Locality", "PostalCode"):
                     return httpx.Response(200, headers=self.rate_headers, json={"result": []})  # live: upper-case entity -> empty
             else:
-                assert json.loads(request.content)["supplySource"] == "APPSTORE"
+                gbody = json.loads(request.content)
+                assert gbody["supplySource"] == "APPSTORE"
+                if any("entity" not in g for g in gbody["geoRequest"]):  # live: "Each geoRequest must have entity"
+                    return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "INVALID_INPUT", "details": [{"message": "Each geoRequest must have entity"}]}})
             return httpx.Response(200, headers=self.rate_headers, json={"result": [{"id": 2018, "entity": "ADMIN_AREA", "displayName": "California"}]})
         if path == "/v1/eligibilities/apps/query":
             return httpx.Response(200, headers=self.rate_headers, json={"result": [{"adamId": 999, "countryOrRegion": "US", "state": "ELIGIBLE"}], "pagination": {"offset": 0, "pageSize": 500, "totalCount": 1}})
@@ -493,6 +500,11 @@ class InsightToolTests(ClientTests):
     async def test_impression_share_windows(self):
         out = await insights.get_impression_share(self.ctx, "999", "2026-08-01", "2026-08-07")
         self.assertEqual(out["data"][0]["searchTerm"], "adhd")
+        out = await insights.get_impression_share(self.ctx, "999", "2026-08-01", "2026-08-07", search_term_contains="ADH")
+        self.assertEqual(len(out["data"]), 1)
+        self.assertEqual(out["meta"]["rows_scanned"], 1)
+        out = await insights.get_impression_share(self.ctx, "999", "2026-08-01", "2026-08-07", search_term_contains="zzz")
+        self.assertEqual(out["data"], [])
         with self.assertRaises(LimitExceeded):
             await insights.get_impression_share(self.ctx, "999", "2026-07-01", "2026-08-07")
         with self.assertRaises(LimitExceeded):  # not a Sunday
@@ -517,7 +529,9 @@ class InsightToolTests(ClientTests):
             await insights.search_apps(self.ctx, query="ab")
         out = await insights.get_app_details(self.ctx, "999")
         self.assertEqual(out["summary"]["storefronts"], 2)
-        out = await insights.search_geo(self.ctx, ids=["2018"])
+        with self.assertRaises(LimitExceeded):
+            await insights.search_geo(self.ctx, ids=["2018"])
+        out = await insights.search_geo(self.ctx, ids=["2018"], entity="ADMIN_AREA")
         self.assertEqual(out["data"][0]["displayName"], "California")
         out = await insights.search_geo(self.ctx, query="Calif", entity="admin_area", country_code="us")
         self.assertEqual(len(out["data"]), 1)
