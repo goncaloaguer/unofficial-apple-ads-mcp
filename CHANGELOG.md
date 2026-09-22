@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3 — genre token
+
+- `get_search_term_popularity`: Apple's genre token drops the conjunction
+  (`HEALTH_FITNESS`, not `HEALTH_AND_FITNESS`); the normalizer and docs
+  updated. Verified live: impression share with local text filter (394
+  rows scanned), geo id resolution with `entity`.
+
 ## 0.2.2 — second Phase 2/3 live round
 
 - `get_impression_share` / `get_search_term_popularity`: `search_term_contains`

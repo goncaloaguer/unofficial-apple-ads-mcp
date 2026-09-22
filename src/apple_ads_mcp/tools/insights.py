@@ -197,9 +197,10 @@ async def get_impression_share(
 
 
 def _genre_enum(genre: str) -> str:
-    """Apple returns/accepts genre as an enum token: 'Health & Fitness' -> 'HEALTH_AND_FITNESS' (live 2026-09-22)."""
-    g = genre.strip().upper().replace("&", " AND ")
-    return "_".join(part for part in g.replace("-", " ").replace("/", " ").split() if part)
+    """Apple's genre token drops the conjunction: 'Health & Fitness' -> 'HEALTH_FITNESS',
+    'Food & Drink' -> 'FOOD_DRINK' (live 2026-09-22; HEALTH_AND_FITNESS is rejected)."""
+    g = genre.strip().upper().replace("&", " ").replace("-", " ").replace("/", " ")
+    return "_".join(part for part in g.split() if part and part != "AND")
 
 
 async def get_search_term_popularity(

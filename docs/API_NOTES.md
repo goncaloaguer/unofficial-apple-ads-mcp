@@ -101,8 +101,11 @@ advertiser account. Items marked **TODO-LIVE** are Phase 1 acceptance items
     operator**: `CONTAINS` silently returns zero rows and `LIKE` is rejected
     (`Invalid value 'LIKE' for field 'filters[n].operator'`), so search-term
     text matching is done locally here. `genre` is an enum token as returned in
-    rows (`SOCIAL_NETWORKING`, `ENTERTAINMENT`, …); a display name such as
-    `Health & Fitness` is rejected with `Invalid genre value`. Rows returned
+    rows — `SOCIAL_NETWORKING`, `ENTERTAINMENT`, `HEALTH_FITNESS` (the
+    conjunction is dropped; `HEALTH_AND_FITNESS` and the display name
+    `Health & Fitness` are both rejected with `Invalid genre value`). Up to
+    500 terms per country × genre; the ADHD terms this account bids on were
+    not in the US Health & Fitness top 500 for a September 2026 week. Rows returned
     with no genre filter are ordered genre → rankInGenre, so a small
     `limit` without a genre filter shows only the first genre.
 15. **Suggestions/recommendations (S/L).** Budget/Target-CPA recommendations

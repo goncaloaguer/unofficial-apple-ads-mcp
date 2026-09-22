@@ -192,9 +192,9 @@ class FakeApple:
                 if f["field"] == "searchTerm":
                     return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [
                         {"code": "INVALID_VALUE_FIELD", "message": f"Invalid value '{f['operator']}' for field 'filters[2].operator'."}]}})
-                if f["field"] == "genre" and f["value"] != "HEALTH_AND_FITNESS":  # live: genre is an enum token
+                if f["field"] == "genre" and f["value"] != "HEALTH_FITNESS":  # live: genre is an enum token
                     return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [{"code": "INVALID_VALUE_FIELD", "message": "Invalid genre value."}]}})
-            rows = [{"week": "2026-08-02", "countryOrRegion": "US", "genre": "HEALTH_AND_FITNESS", "searchTerm": "adhd", "rankInGenre": 3, "searchPopularity1to100": 80}]
+            rows = [{"week": "2026-08-02", "countryOrRegion": "US", "genre": "HEALTH_FITNESS", "searchTerm": "adhd", "rankInGenre": 3, "searchPopularity1to100": 80}]
             return httpx.Response(200, headers=self.rate_headers, json={"result": {"rows": rows}, "pagination": {"offset": 0, "pageSize": 1000, "totalCount": 1}})
         if path.startswith("/v1/suggestions/") or path.startswith("/v1/recommendations/"):
             body = json.loads(request.content)
@@ -510,6 +510,13 @@ class InsightToolTests(ClientTests):
         with self.assertRaises(LimitExceeded):  # not a Sunday
             await insights.get_impression_share(self.ctx, "999", "2026-08-03", "2026-08-16", granularity="WEEKLY_SUN_SAT")
         await insights.get_impression_share(self.ctx, "999", "2026-08-02", "2026-08-15", granularity="WEEKLY_SUN_SAT")
+
+    def test_genre_token_normalization(self):
+        # Live 2026-09-22: Apple drops the conjunction (HEALTH_FITNESS); HEALTH_AND_FITNESS is rejected.
+        for raw in ("Health & Fitness", "health and fitness", "HEALTH_FITNESS"):
+            self.assertEqual(insights._genre_enum(raw), "HEALTH_FITNESS")
+        self.assertEqual(insights._genre_enum("Social Networking"), "SOCIAL_NETWORKING")
+        self.assertEqual(insights._genre_enum("Food & Drink"), "FOOD_DRINK")
 
     async def test_popularity_suggestions_recommendations(self):
         out = await insights.get_search_term_popularity(self.ctx, ["us"], "2026-08-02", "2026-08-08", genre="Health & Fitness", search_term_contains="adhd")

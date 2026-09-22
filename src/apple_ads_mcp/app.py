@@ -343,8 +343,9 @@ def build_server(ctx: AppContext):
     ) -> dict:
         """Apple's most-searched terms by storefront and genre (WEEKLY_SUN_SAT or MONTHLY), with rank and 1-100 popularity.
 
-        genre: Apple genre token, e.g. HEALTH_AND_FITNESS, PRODUCTIVITY, SOCIAL_NETWORKING ('Health & Fitness' is
-        normalized). Omit for all genres. search_term_contains is matched locally (pass a genre to keep the scan small)."""
+        genre: Apple genre token, e.g. HEALTH_FITNESS, PRODUCTIVITY, SOCIAL_NETWORKING, ENTERTAINMENT ('Health &
+        Fitness' is normalized; the conjunction is dropped). Omit for all genres. search_term_contains is matched
+        locally over up to 500 terms per genre (pass a genre to keep the scan small)."""
         return await insights.get_search_term_popularity(ctx, countries, start, end, granularity, genre, search_term_contains, limit, account_id)
 
     @mcp.tool()
