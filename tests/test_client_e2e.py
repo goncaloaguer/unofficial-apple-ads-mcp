@@ -195,7 +195,9 @@ class FakeApple:
                 if f["field"] == "genre" and f["value"] != "HEALTH_FITNESS":  # live: genre is an enum token
                     return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [{"code": "INVALID_VALUE_FIELD", "message": "Invalid genre value."}]}})
             rows = [{"week": "2026-08-02", "countryOrRegion": "US", "genre": "HEALTH_FITNESS", "searchTerm": "adhd", "rankInGenre": 3, "searchPopularity1to100": 80}]
-            return httpx.Response(200, headers=self.rate_headers, json={"result": {"rows": rows}, "pagination": {"offset": 0, "pageSize": 1000, "totalCount": 1}})
+            if body["pagination"]["pageSize"] == 5000:  # list_genres walk
+                rows = rows + [{"week": "2026-08-02", "countryOrRegion": "US", "genre": "SOCIAL_NETWORKING", "searchTerm": "x", "rankInGenre": 1}]
+            return httpx.Response(200, headers=self.rate_headers, json={"result": {"rows": rows}, "pagination": {"offset": 0, "pageSize": body["pagination"]["pageSize"], "totalCount": len(rows)}})
         if path.startswith("/v1/suggestions/") or path.startswith("/v1/recommendations/"):
             body = json.loads(request.content)
             fields = {f["field"]: f["value"] for f in body["filters"]}
@@ -521,6 +523,8 @@ class InsightToolTests(ClientTests):
     async def test_popularity_suggestions_recommendations(self):
         out = await insights.get_search_term_popularity(self.ctx, ["us"], "2026-08-02", "2026-08-08", genre="Health & Fitness", search_term_contains="adhd")
         self.assertEqual(out["data"][0]["rankInGenre"], 3)
+        out = await insights.get_search_term_popularity(self.ctx, ["us"], "2026-08-02", "2026-08-08", list_genres=True)
+        self.assertEqual([g["genre"] for g in out["data"]], ["HEALTH_FITNESS", "SOCIAL_NETWORKING"])
         out = await insights.get_keyword_suggestions(self.ctx, "999", terms=["adhd"], countries=["US"])
         self.assertEqual([k["text"] for k in out["data"]["keywords"]], ["focus app", "adhd planner"])
         self.assertEqual(out["data"]["phrases"][0]["phrase"], "adhd tools")

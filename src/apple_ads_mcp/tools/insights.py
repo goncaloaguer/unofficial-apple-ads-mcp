@@ -212,6 +212,7 @@ async def get_search_term_popularity(
     genre: str | None = None,
     search_term_contains: str | None = None,
     limit: int = 100,
+    list_genres: bool = False,
     account_id: str | None = None,
 ) -> dict[str, Any]:
     account = resolve_account(ctx.settings, account_id)
@@ -222,8 +223,28 @@ async def get_search_term_popularity(
         raise LimitExceeded("countries is required (ISO codes, e.g. ['US'])")
     s, e = reporting.parse_date(start, "start"), reporting.parse_date(end, "end")
     budget = ctx.guard("get_search_term_popularity", {"countries": countries, "start": start, "end": end, "granularity": granularity,
-                                                      "genre": genre, "search_term_contains": search_term_contains, "limit": limit, "account_id": account})
+                                                      "genre": genre, "search_term_contains": search_term_contains, "limit": limit,
+                                                      "list_genres": list_genres, "account_id": account})
     filters: list[dict[str, Any]] = [{"field": "countryOrRegion", "operator": "IN", "value": [c.upper() for c in countries]}]
+    if list_genres:
+        # Apple's genre tokens are not the App Store category names (PRODUCTIVITY, MEDICAL are rejected;
+        # HEALTH_FITNESS, SOCIAL_NETWORKING, ENTERTAINMENT accepted) and no endpoint lists them, so walk the
+        # report (≤ 500 terms per country × genre, pageSize 5000) and collect the distinct values.
+        body = {"filters": filters, "fields": ["rankInGenre"], "sorting": [{"field": "genre", "order": "ASC"}, {"field": "rankInGenre", "order": "ASC"}],
+                "timeRange": {"start": s.isoformat(), "end": e.isoformat(), "timeZone": "UTC", "granularity": granularity},
+                "pagination": {"offset": 0, "pageSize": 5000}}
+        rows, meta = await ctx.client.paginate("POST", "/v1/insights/apps/search-term-popularity/query", budget=budget, account_id=account,
+                                               json_body=body, result_key="rows", max_rows=50_000, max_pages=8)
+        genres: dict[str, int] = {}
+        for r in rows:
+            g = r.get("genre")
+            if g:
+                genres[g] = genres.get(g, 0) + 1
+        return build_envelope(
+            data=[{"genre": g, "terms": n} for g, n in sorted(genres.items())], meta={**meta, "rows_returned": len(genres)}, account_id=account,
+            summary={"countries": countries, "granularity": granularity, "genres": len(genres),
+                     "note": "pass one of these tokens as `genre`; the list is complete only if meta.truncated is false"},
+            max_response_bytes=ctx.settings.max_response_bytes)
     if genre:
         filters.append({"field": "genre", "operator": "EQUALS", "value": _genre_enum(genre)})
     body = {

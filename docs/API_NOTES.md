@@ -103,7 +103,9 @@ advertiser account. Items marked **TODO-LIVE** are Phase 1 acceptance items
     text matching is done locally here. `genre` is an enum token as returned in
     rows — `SOCIAL_NETWORKING`, `ENTERTAINMENT`, `HEALTH_FITNESS` (the
     conjunction is dropped; `HEALTH_AND_FITNESS` and the display name
-    `Health & Fitness` are both rejected with `Invalid genre value`). Up to
+    `Health & Fitness` are both rejected with `Invalid genre value`, and so
+    are `PRODUCTIVITY` and `MEDICAL` — the set is not the App Store category
+    list; `list_genres=true` enumerates it from the report itself). Up to
     500 terms per country × genre; the ADHD terms this account bids on were
     not in the US Health & Fitness top 500 for a September 2026 week. Rows returned
     with no genre filter are ordered genre → rankInGenre, so a small

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4 — genre discovery
+
+- `get_search_term_popularity(list_genres=true)`: enumerates the genre
+  tokens Apple accepts for the given storefronts (`PRODUCTIVITY` and
+  `MEDICAL` are rejected live, so the set is not the App Store category
+  list and no endpoint publishes it).
+
 ## 0.2.3 — genre token
 
 - `get_search_term_popularity`: Apple's genre token drops the conjunction
