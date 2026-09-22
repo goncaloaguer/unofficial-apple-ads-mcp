@@ -43,6 +43,10 @@ def filter_allowed(settings: Settings, acls: list[dict]) -> list[dict]:
 # capable (warn) rather than trusted.
 READ_ONLY_ROLES = frozenset(
     {
+        # Verified live 2026-09-22: the API names the read-write role
+        # "API Campaign Manager" (UI: "API Account Manager"), so the
+        # read-only role is expected as "API Campaign Read Only".
+        "API Campaign Read Only",
         "API Account Read Only",
         "Limited Access API Read Only",
         "API Read Only",

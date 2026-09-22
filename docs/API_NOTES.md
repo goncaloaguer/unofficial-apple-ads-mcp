@@ -15,10 +15,14 @@ advertiser account. Items marked **TODO-LIVE** are Phase 1 acceptance items
    `grant_type=client_credentials`, `scope=searchadsorg`, 3600 s TTL. The
    client secret is an ES256 JWT (`iss=teamId`, `sub=clientId`,
    `aud=https://appleid.apple.com`, `kid=keyId`, `exp` ≤ 180 days).
-3. **Roles (D/S).** `GET /v1/acls` returns `roles: [string]` per account —
-   an open list, not an enum. Read-only names known from the UI: "API
-   Account Read Only", "Limited Access API Read Only". **TODO-LIVE:** exact
-   strings as returned by the API.
+3. **Roles (L).** `GET /v1/acls` returns `roles: [string]` per account —
+   an open list, not an enum. The API's names differ from the UI's: a user
+   shown as "API Account Manager" in the UI comes back as
+   `"API Campaign Manager"` (verified live 2026-09-22). The read-only role
+   is therefore expected as `"API Campaign Read Only"`; the UI's "API
+   Account Read Only" is kept in the allowlist as well. Also observed: the
+   org ID and the primary ad account ID were the same number, and a legacy
+   "Search Ads Basic" account appears as a separate ad account.
 4. **Four query-body families (S).** Entity `/query` uses
    `QueryFilter{field, operator, value, ignoreCase}` +
    `QueryPagination{offset, pageSize, fetchTotalCount}`. Reports/insights use
