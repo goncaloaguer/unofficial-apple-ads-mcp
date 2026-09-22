@@ -74,12 +74,23 @@ class GroupByAndOptions(unittest.TestCase):
         build(granularity="HOURLY", start="2026-08-30", end="2026-09-01", group_by=["storefront"])
 
     def test_searchterms_ortz_only_and_no_include_rows(self):
+        cid = [{"field": "campaignId", "operator": "EQUALS", "value": 1}]
         with self.assertRaises(LimitExceeded):
-            build(level="searchterms", time_zone="UTC")
+            build(level="searchterms", time_zone="UTC", filters=cid)
         with self.assertRaises(LimitExceeded):
-            build(level="searchterms", include_grand_total=True)
-        path, body = build(level="searchterms")
+            build(level="searchterms", include_grand_total=True, filters=cid)
+        path, body = build(level="searchterms", filters=cid)
         self.assertEqual(body["timeRange"]["timeZone"], "ORTZ")
+
+    def test_keyword_and_searchterm_levels_require_campaign_filter(self):
+        # Verified live 2026-09-22: Apple rejects these without campaignId.
+        for level in ("keywords", "searchterms"):
+            with self.assertRaises(LimitExceeded) as cm:
+                build(level=level)
+            self.assertIn("campaignId", str(cm.exception))
+            build(level=level, filters=[{"field": "campaignId", "operator": "EQUALS", "value": 1}])
+        with self.assertRaises(LimitExceeded):  # keywordId is not a report filter (live)
+            build(level="keywords", filters=[{"field": "keywordId", "operator": "EQUALS", "value": 1}])
 
     def test_empty_metrics_not_with_group_by(self):
         with self.assertRaises(LimitExceeded):
@@ -93,7 +104,9 @@ class GroupByAndOptions(unittest.TestCase):
         with self.assertRaises(LimitExceeded):
             build(filters=[{"field": "name", "operator": "EQUALS", "value": "x"}])
         _, body = build(fields=["localSpend", "taps"], filters=[{"field": "campaignId", "operator": "IN", "value": [1, 2]}])
-        self.assertEqual(body["fields"], ["localSpend", "taps"])
+        # `fields` is validated but applied client-side: sending it upstream
+        # strips report metadata (verified live 2026-09-22).
+        self.assertNotIn("fields", body)
         self.assertEqual(body["filters"], [{"field": "campaignId", "operator": "IN", "value": [1, 2]}])
 
     def test_range_ceiling_and_order(self):

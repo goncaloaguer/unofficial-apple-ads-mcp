@@ -21,6 +21,50 @@ from apple_ads_mcp.policy.limits import check_entity_ids
 
 _STATUS_VALUES = ("ENABLED", "PAUSED")
 
+# Fields dropped from list outputs unless verbose=True. Verified live
+# (2026-09-22): a 46-campaign account produced ~57 KB with the raw entities,
+# past what chat clients render; these fields carried ~40% of it and no
+# analytical value (regulationResponses alone was 3.4 KB of NOT_ANSWERED).
+_NOISE_FIELDS = frozenset(
+    {"adAccountId", "deleted", "regulationResponses", "invoiceDetail", "creationTime",
+     "paymentModel", "billingEvent", "automatedKeywordsRequired", "pricingModel"}
+)
+
+
+def _targeting_summary(targeting: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Flatten {dim: {include: [...], exclude: [...]}} to {dim: [...], dim_exclude: [...]}."""
+    if not isinstance(targeting, dict):
+        return targeting
+    out: dict[str, Any] = {}
+    for dim, spec in targeting.items():
+        if isinstance(spec, dict):
+            if spec.get("include"):
+                out[dim] = spec["include"]
+            if spec.get("exclude"):
+                out[f"{dim}_exclude"] = spec["exclude"]
+        else:
+            out[dim] = spec
+    return out
+
+
+def compact(entity: dict[str, Any], verbose: bool) -> dict[str, Any]:
+    """Drop noise fields and flatten targeting/bid for chat-sized outputs."""
+    if verbose:
+        return entity
+    out = {k: v for k, v in entity.items() if k not in _NOISE_FIELDS}
+    if "targeting" in out:
+        out["targeting"] = _targeting_summary(out["targeting"])
+    bid_strategy = out.get("bidStrategy")
+    if isinstance(bid_strategy, dict):
+        flat = dict(bid_strategy)
+        if isinstance(flat.get("bid"), dict):
+            flat["bid"] = normalize_entity({"bid": flat["bid"]})["bid"]
+        out["bidStrategy"] = flat
+    for key in ("systemStatusReasons", "systemStatusLimitingReasons", "sharedBudgets", "endTime"):
+        if key in out and not out[key]:
+            out.pop(key)
+    return out
+
 
 def _status_filters(status: str | None, display_status: str | None) -> list[dict[str, Any]]:
     filters: list[dict[str, Any]] = []
@@ -34,10 +78,18 @@ def _status_filters(status: str | None, display_status: str | None) -> list[dict
     return filters
 
 
+def _coerce_ids(ids: list[str]) -> list[Any]:
+    return [int(i) if str(i).isdigit() else i for i in ids]
+
+
 def _id_filter(field: str, ids: list[str] | None) -> list[dict[str, Any]]:
+    """EQUALS for a single id, IN for several (campaigns/ad groups/ads accept IN)."""
     if not ids:
         return []
-    return [{"field": field, "operator": "IN", "value": [int(i) if str(i).isdigit() else i for i in ids]}]
+    values = _coerce_ids(ids)
+    if len(values) == 1:
+        return [{"field": field, "operator": "EQUALS", "value": values[0]}]
+    return [{"field": field, "operator": "IN", "value": values}]
 
 
 async def list_ad_accounts(ctx: AppContext) -> dict[str, Any]:
@@ -89,6 +141,7 @@ async def list_campaigns(
     display_status: str | None = None,
     name_contains: str | None = None,
     promoted_object_id: str | None = None,
+    verbose: bool = False,
 ) -> dict[str, Any]:
     """Campaigns with budget, bid strategy, targeting, status trio and reasons."""
     account = resolve_account(ctx.settings, account_id)
@@ -100,13 +153,13 @@ async def list_campaigns(
     budget = ctx.guard(
         "list_campaigns",
         {"account_id": account, "status": status, "display_status": display_status,
-         "name_contains": name_contains, "promoted_object_id": promoted_object_id},
+         "name_contains": name_contains, "promoted_object_id": promoted_object_id, "verbose": verbose},
     )
     body = entity_query(filters=filters, page_size=min(500, ctx.settings.max_page_size), fetch_total_count=True)
     rows, meta = await ctx.client.paginate(
         "POST", "/v1/campaigns/query", budget=budget, account_id=account, json_body=body
     )
-    rows = [normalize_entity(r) for r in rows]
+    rows = [compact(normalize_entity(r), verbose) for r in rows]
     by_display: dict[str, int] = {}
     for r in rows:
         key = str(r.get("displayStatus") or "UNKNOWN")
@@ -126,6 +179,7 @@ async def list_ad_groups(
     campaign_ids: list[str] | None = None,
     status: str | None = None,
     display_status: str | None = None,
+    verbose: bool = False,
 ) -> dict[str, Any]:
     """Ad groups with bid strategy, automation, targeting dimensions, schedule, status."""
     account = resolve_account(ctx.settings, account_id)
@@ -133,13 +187,14 @@ async def list_ad_groups(
     filters = _status_filters(status, display_status) + _id_filter("campaignId", campaign_ids)
     budget = ctx.guard(
         "list_ad_groups",
-        {"account_id": account, "campaign_ids": campaign_ids, "status": status, "display_status": display_status},
+        {"account_id": account, "campaign_ids": campaign_ids, "status": status,
+         "display_status": display_status, "verbose": verbose},
     )
     body = entity_query(filters=filters, page_size=min(500, ctx.settings.max_page_size), fetch_total_count=True)
     rows, meta = await ctx.client.paginate(
         "POST", "/v1/adgroups/query", budget=budget, account_id=account, json_body=body
     )
-    rows = [normalize_entity(r) for r in rows]
+    rows = [compact(normalize_entity(r), verbose) for r in rows]
     automated = sum(1 for r in rows if r.get("automatedKeywordsOptIn"))
     return build_envelope(
         data=rows,
@@ -158,32 +213,58 @@ async def list_keywords(
     status: str | None = None,
     include_negative: bool = False,
 ) -> dict[str, Any]:
-    """Keywords (bid, match type, status); optionally negative keywords too."""
+    """Keywords (bid, match type, status); optionally negative keywords too.
+
+    Verified live (2026-09-22): the keywords query rejects ``campaignId IN
+    [...]`` ("campaignId condition must use EQUALS operator"), so this fans
+    out one EQUALS query per campaign and filters ad groups client-side.
+    """
     account = resolve_account(ctx.settings, account_id)
     check_entity_ids(campaign_ids, ctx.settings.max_entity_ids)
     check_entity_ids(ad_group_ids, ctx.settings.max_entity_ids)
-    filters = _status_filters(status, None)
-    filters += _id_filter("campaignId", campaign_ids) + _id_filter("adGroupId", ad_group_ids)
     budget = ctx.guard(
         "list_keywords",
         {"account_id": account, "campaign_ids": campaign_ids, "ad_group_ids": ad_group_ids,
          "status": status, "include_negative": include_negative},
     )
     page = min(1000, ctx.settings.max_page_size)
-    body = entity_query(filters=filters, page_size=page, fetch_total_count=True)
-    rows, meta = await ctx.client.paginate(
-        "POST", "/v1/keywords/query", budget=budget, account_id=account, json_body=body
-    )
-    rows = [normalize_entity(r) for r in rows]
+    base_filters = _status_filters(status, None)
+    wanted_ad_groups = {str(i) for i in ad_group_ids} if ad_group_ids else None
+
+    async def fetch(path: str) -> tuple[list[dict], dict[str, Any], list[str]]:
+        rows: list[dict] = []
+        meta: dict[str, Any] = {"pages_fetched": 0, "truncated": False}
+        warnings: list[str] = []
+        scopes: list[list[dict[str, Any]]]
+        if campaign_ids:
+            scopes = [base_filters + _id_filter("campaignId", [cid]) for cid in campaign_ids]
+        elif ad_group_ids:
+            scopes = [base_filters + _id_filter("adGroupId", [gid]) for gid in ad_group_ids]
+        else:
+            scopes = [base_filters]
+        for scope in scopes:
+            body = entity_query(filters=scope, page_size=page, fetch_total_count=True)
+            part, part_meta = await ctx.client.paginate(
+                "POST", path, budget=budget, account_id=account, json_body=body
+            )
+            rows.extend(part)
+            meta["pages_fetched"] += part_meta.get("pages_fetched", 0)
+            meta["truncated"] = meta["truncated"] or bool(part_meta.get("truncated"))
+        if wanted_ad_groups is not None and campaign_ids:
+            rows = [r for r in rows if str(r.get("adGroupId")) in wanted_ad_groups]
+        if meta["truncated"]:
+            warnings.append(f"{path.rsplit('/', 2)[1]} list truncated; narrow by campaign_ids/ad_group_ids")
+        meta["rows_returned"] = len(rows)
+        meta["source"] = "Apple Ads Platform API v1"
+        return rows, meta, warnings
+
+    rows, meta, warnings = await fetch("/v1/keywords/query")
+    rows = [compact(normalize_entity(r), False) for r in rows]
     negatives: list[dict] = []
-    warnings: list[str] = []
     if include_negative:
-        neg_rows, neg_meta = await ctx.client.paginate(
-            "POST", "/v1/negative-keywords/query", budget=budget, account_id=account, json_body=body
-        )
-        negatives = [normalize_entity(r) for r in neg_rows]
-        if neg_meta.get("truncated"):
-            warnings.append("negative keyword list truncated; narrow by campaign_ids/ad_group_ids")
+        neg_rows, _, neg_warnings = await fetch("/v1/negative-keywords/query")
+        negatives = [compact(normalize_entity(r), False) for r in neg_rows]
+        warnings += neg_warnings
     by_match: dict[str, int] = {}
     for r in rows:
         key = str(r.get("matchType") or "UNKNOWN")
@@ -195,7 +276,8 @@ async def list_keywords(
         data=data,
         meta=meta,
         account_id=account,
-        summary={"keywords": len(rows), "by_match_type": by_match, "negative_keywords": len(negatives) if include_negative else None},
+        summary={"keywords": len(rows), "by_match_type": by_match,
+                 "negative_keywords": len(negatives) if include_negative else None},
         warnings=warnings,
         max_response_bytes=ctx.settings.max_response_bytes,
     )
@@ -208,6 +290,7 @@ async def list_ads(
     ad_group_ids: list[str] | None = None,
     status: str | None = None,
     include_creatives: bool = True,
+    verbose: bool = False,
 ) -> dict[str, Any]:
     """Ads with status trio and reasons, joined with their creatives (type, destination, eligibility)."""
     account = resolve_account(ctx.settings, account_id)
@@ -217,13 +300,13 @@ async def list_ads(
     budget = ctx.guard(
         "list_ads",
         {"account_id": account, "campaign_ids": campaign_ids, "ad_group_ids": ad_group_ids,
-         "status": status, "include_creatives": include_creatives},
+         "status": status, "include_creatives": include_creatives, "verbose": verbose},
     )
     body = entity_query(filters=filters, page_size=min(500, ctx.settings.max_page_size), fetch_total_count=True)
     rows, meta = await ctx.client.paginate(
         "POST", "/v1/ads/query", budget=budget, account_id=account, json_body=body
     )
-    rows = [normalize_entity(r) for r in rows]
+    rows = [compact(normalize_entity(r), verbose) for r in rows]
     warnings: list[str] = []
     if include_creatives and rows:
         creative_ids = sorted({r.get("creativeId") for r in rows if r.get("creativeId") is not None})

@@ -79,13 +79,13 @@ class FakeApple:
         path = url.path
         if path == "/v1/acls":
             return httpx.Response(200, headers=self.rate_headers, json={"result": {"acls": [
-                {"adAccount": {"id": 123456789, "name": "Inflow", "orgId": 1}, "roles": ["API Account Read Only"]},
+                {"adAccount": {"id": 123456789, "name": "Example App Co.", "orgId": 1}, "roles": ["API Account Read Only"]},
                 {"adAccount": {"id": 555, "name": "Other", "orgId": 1}, "roles": ["Admin"]},
             ]}})
         if path == "/v1/ad-accounts/123456789":
             assert request.headers["X-AP-Context"] == "adAccountId=123456789"
             return httpx.Response(200, headers=self.rate_headers, json={"result": {
-                "id": 123456789, "name": "Inflow", "currency": "USD", "timezone": "Europe/Lisbon",
+                "id": 123456789, "name": "Example App Co.", "currency": "USD", "timezone": "Europe/Lisbon",
                 "systemStatus": "ACTIVE", "productFeatures": ["APPSTORE_APP_MANUAL"]}})
         if path == "/v1/campaigns/query":
             body = json.loads(request.content)
@@ -109,6 +109,19 @@ class FakeApple:
             return httpx.Response(200, headers=self.rate_headers, json={
                 "result": {"rows": rows, "summary": {"grandTotal": {"totalMetrics": {"taps": 100}}}},
                 "pagination": {"offset": 0, "pageSize": 500, "totalCount": 2}})
+        if path in ("/v1/keywords/query", "/v1/negative-keywords/query"):
+            body = json.loads(request.content)
+            for f in body.get("filters", []):
+                if f["field"] == "campaignId" and f["operator"] != "EQUALS":
+                    return httpx.Response(400, headers=self.rate_headers, json={"error": {
+                        "code": "VALIDATION_ERROR", "details": [{"code": "INVALID_INPUT",
+                        "message": "campaignId condition must use EQUALS operator"}]}})
+            cid = next((f["value"] for f in body.get("filters", []) if f["field"] == "campaignId"), None)
+            rows = [{"id": 10 * cid + i, "campaignId": cid, "adGroupId": 100 * cid, "text": f"kw{i}",
+                     "matchType": "EXACT", "bid": {"amount": "2.5", "currency": "USD"}, "status": "ENABLED",
+                     "adAccountId": 123456789, "deleted": False} for i in range(2)] if cid else []
+            return httpx.Response(200, headers=self.rate_headers, json={
+                "result": rows, "pagination": {"offset": 0, "pageSize": 1000, "totalCount": len(rows)}})
         if path == "/v1/campaigns/1":
             return httpx.Response(200, headers=self.rate_headers, json={"result": self.campaigns[0]})
         return httpx.Response(404, json={"error": {"code": "not_found", "message": path}})
@@ -241,6 +254,35 @@ class ToolTests(ClientTests):
         self.assertEqual(day["localSpend"], 20.0)  # two campaigns × 10
         self.assertEqual(day["cpt_derived"], 20.0 / 100)
         self.assertEqual(out["summary"]["totals"]["totalInstalls"], 20)
+
+    async def test_list_keywords_fans_out_equals_per_campaign(self):
+        out = await structure.list_keywords(self.ctx, campaign_ids=["1", "2"], include_negative=True)
+        self.assertEqual([k["id"] for k in out["data"]["keywords"]], [10, 11, 20, 21])
+        self.assertEqual(out["data"]["keywords"][0]["bid"], {"amount": 2.5, "currency": "USD"})
+        self.assertNotIn("adAccountId", out["data"]["keywords"][0])  # compacted
+        self.assertEqual(out["summary"]["negative_keywords"], 4)
+        kw_bodies = [json.loads(r.content) for r in self.fake.requests if r.url.path == "/v1/keywords/query"]
+        self.assertEqual([b["filters"][0]["operator"] for b in kw_bodies], ["EQUALS", "EQUALS"])
+
+    async def test_list_campaigns_compacts_and_verbose_keeps_raw(self):
+        self.fake.campaigns[0]["regulationResponses"] = [{"regulationType": "X", "responseValue": "NOT_ANSWERED"}]
+        self.fake.campaigns[0]["targeting"] = {"countryOrRegion": {"include": ["US"]}, "supplyPlacement": {"include": ["APPSTORE_SEARCH_RESULTS"]}}
+        out = await structure.list_campaigns(self.ctx)
+        c = out["data"][0]
+        self.assertNotIn("regulationResponses", c)
+        self.assertEqual(c["targeting"], {"countryOrRegion": ["US"], "supplyPlacement": ["APPSTORE_SEARCH_RESULTS"]})
+        out = await structure.list_campaigns(self.ctx, verbose=True)
+        self.assertIn("regulationResponses", out["data"][0])
+
+    async def test_report_fields_applied_client_side(self):
+        out = await reporting_tools.get_report(self.ctx, level="campaigns", start="2026-08-01", end="2026-08-31",
+                                               fields=["taps"])
+        row = out["data"][0]
+        self.assertEqual(row["name"], "Camp 1")  # metadata intact
+        self.assertIn("taps", row)
+        self.assertNotIn("localSpend", row)
+        sent = json.loads(self.fake.requests[-1].content)
+        self.assertNotIn("fields", sent)
 
     async def test_duplicate_call_suppressed(self):
         await structure.list_campaigns(self.ctx)

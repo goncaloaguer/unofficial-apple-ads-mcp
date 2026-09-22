@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.2 — live-verification fixes
+
+- Reports: keyword and search-term levels now require a `campaignId` filter
+  locally (Apple's rule); `keywordId` removed from allowed filters; `fields`
+  is applied client-side because sending it upstream strips Apple's
+  metadata block.
+- `list_keywords` fans out one `campaignId EQUALS` query per campaign —
+  Apple rejects `IN` on that endpoint. Single-id filters use EQUALS
+  everywhere.
+- List tools compact their output by default (noise fields dropped,
+  targeting flattened, empty reason arrays removed); `verbose=true` returns
+  Apple's raw entities. A 46-campaign account went from ~57 KB to a size
+  chat clients render.
+- Money normalization handles the `{"value": {amount, currency}}` wrapper
+  used by campaign `dailyBudget`.
+- docs/API_NOTES.md: nine live findings recorded; TODO-LIVE items 6 and 17
+  closed.
+
 ## 0.1.1
 
 - Fix: the startup role check ran in its own event loop and the same

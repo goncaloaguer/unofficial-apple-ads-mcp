@@ -217,6 +217,12 @@ class NormalizeTests(unittest.TestCase):
         self.assertIsNone(normalize.money(None))
         self.assertEqual(normalize.money({"amount": "x", "currency": "USD"})["amount"], None)
 
+    def test_value_wrapped_money(self):
+        # Campaign dailyBudget arrives as {"value": {amount, currency}} (live).
+        self.assertEqual(normalize.money({"value": {"amount": "100", "currency": "GBP"}}), {"amount": 100.0, "currency": "GBP"})
+        e = normalize.normalize_entity({"dailyBudget": {"value": {"amount": "100", "currency": "GBP"}}, "name": "x"})
+        self.assertEqual(e["dailyBudget"], {"amount": 100.0, "currency": "GBP"})
+
     def test_metrics(self):
         m = normalize.normalize_metrics({"localSpend": {"amount": "5.00", "currency": "EUR"}, "taps": 3, "ttr": 0.1})
         self.assertEqual(m, {"localSpend": 5.0, "currency": "EUR", "taps": 3, "ttr": 0.1})

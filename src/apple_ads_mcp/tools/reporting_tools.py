@@ -46,8 +46,9 @@ def flatten_rows(level: str, raw_rows: list[dict], granular: bool) -> list[dict[
                 "id": kw.get("id"), "text": kw.get("text"), "matchType": kw.get("matchType"),
                 "bid": normalize_metrics({"bid": kw.get("bid")}).get("bid") if isinstance(kw.get("bid"), dict) else kw.get("bid"),
             }
-        if raw.get("insights"):
-            meta["insights"] = raw["insights"]
+        insights = raw.get("insights")
+        if insights and any(v for v in insights.values()):
+            meta["insights"] = insights
         periods = raw.get("granularMetrics") if granular else None
         if periods:
             for p in periods:
@@ -91,6 +92,12 @@ async def get_report(
         "POST", path, budget=budget, account_id=account, json_body=body, result_key="rows"
     )
     rows = flatten_rows(level.lower(), raw_rows, granular=bool(granularity))
+    if fields:
+        keep = set(fields) | {"currency", "date"}
+        rows = [
+            {k: v for k, v in r.items() if k in keep or k not in reporting.METRICS}
+            for r in rows
+        ]
     meta["rows_returned"] = len(rows)
     meta["entities"] = len(raw_rows)
     summary: dict[str, Any] = {

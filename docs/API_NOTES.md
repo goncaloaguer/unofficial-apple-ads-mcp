@@ -37,9 +37,28 @@ advertiser account. Items marked **TODO-LIVE** are Phase 1 acceptance items
    CONTAINS_ALL, NOT_CONTAINS_ANY, NOT_CONTAINS_ALL` — no `CONTAINS`
    ("name contains" = `LIKE` + `ignoreCase`). Report filters do have
    `CONTAINS`.
-6. **Report filter field names — TODO-LIVE.** Neither docs nor SDK list the
-   accepted filter `field` names for report requests. This server allows a
-   curated set (`reporting.FILTER_FIELDS`); adjust after live verification.
+6. **Report filters (L, 2026-09-22).** `campaignId` and `adGroupId` are
+   accepted (EQUALS verified). `keywordId` is rejected with
+   `INVALID_FIELD_ATTRIBUTE: Filters contain unsupported fields keywordId`.
+   Keyword and search-term reports **require** a `campaignId` filter:
+   `INVALID_VALUE_FIELD: campaignId filter is required for KEYWORD reports
+   when promotedObjectType is APPS`. Other names in
+   `reporting.FILTER_FIELDS` remain unverified.
+6a. **Report `fields` strips metadata (L).** Sending `fields: [...]` makes
+   Apple omit metadata too (keyword `text`, `matchType`, `bid` came back
+   null). This server no longer sends `fields` upstream; it prunes metrics
+   client-side after flattening.
+6b. **Entity query operators are per-endpoint (L).** `POST /v1/keywords/query`
+   rejects `campaignId IN [...]` (`INVALID_INPUT: campaignId condition must
+   use EQUALS operator`) while `/v1/adgroups/query` and `/v1/ads/query`
+   accept IN. `list_keywords` fans out one EQUALS query per campaign.
+6c. **Search-term privacy aggregate (L).** Rows with `searchTermText: null`
+   are Apple's low-volume bucket (terms below the reporting threshold,
+   aggregated per keyword). They still carry spend/taps/installs.
+6d. **Ads may not exist (L).** Campaigns using the default App Store product
+   page have no ad entities; `ads/query` returns an empty list for them.
+   Legacy 2021-era ads appeared with `CREATIVE_SET_INVALID` /
+   `ASSET_DELETED` reasons.
 7. **Report rows (S).** `{totalMetrics, granularMetrics?[], metadata}`;
    `granularMetrics` only when `granularity` is set, each carrying `date`.
    Keyword rows add `insights.bidRecommendation`. Search-term metadata:
@@ -72,10 +91,19 @@ advertiser account. Items marked **TODO-LIVE** are Phase 1 acceptance items
     5 QPS; phrase/category suggestions need `queryType: SUGGESTION|SEARCH`.
 16. **Geo search (S).** Both `GET` and `POST /v1/search/geo` require
     `supplySource` (`APPSTORE|MAPS`).
-17. **`productFeatures` / `supplyPlacement` values — TODO-LIVE.** Docs name
-    `APPSTORE_APP_MANUAL` / `BUSINESS_BRAND_MANUAL` and
-    `APPSTORE_SEARCH_RESULTS|TODAY_TAB|SEARCH_TAB|PRODUCT_PAGES`; the SDK
-    types both as plain strings. This server treats them as opaque.
+17. **`productFeatures` / `supplyPlacement` values (L).** Verified live:
+    `productFeatures: ["APPSTORE_APP_MANUAL"]` and
+    `targeting.supplyPlacement.include: ["APPSTORE_SEARCH_RESULTS"]`, exactly
+    as the docs name them. Ad-group targeting seen: `deviceClass.include:
+    ["IPHONE"]`, `adminArea.include: [numeric geo IDs]`.
+17a. **Money wrapping differs by field (L).** Campaign `dailyBudget` is
+    `{"value": {"amount": "100", "currency": "GBP"}}` (wrapped), ad-group
+    `bidStrategy.bid` and keyword `bid` are bare `{amount, currency}`. Both
+    are normalized to `{amount: float, currency}`.
+17b. **Payload size (L).** 46 campaigns as raw entities ≈ 57 KB, more than
+    chat clients render. List tools now compact by default (drop
+    `regulationResponses`, `adAccountId`, `deleted`, timestamps, billing
+    fields; flatten `targeting`); `verbose=true` returns the raw entities.
 18. **`/healthz` (L, inherited).** Intercepted by Google Frontend on
     `run.app` domains — the health endpoint is `/health`.
 19. **MCP SDK (L, inherited).** `mcp` 2.x moved `mcp.server.fastmcp`; pin

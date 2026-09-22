@@ -52,16 +52,19 @@ def build_server(ctx: AppContext):
         display_status: str | None = None,
         name_contains: str | None = None,
         promoted_object_id: str | None = None,
+        verbose: bool = False,
     ) -> dict:
         """List campaigns with daily budget, bid strategy, targeting, and status.
 
         status: ENABLED | PAUSED (advertiser intent). display_status: RUNNING |
         PAUSED | ON_HOLD | LIMITED | PROCESSING | DELETED (system-computed).
         systemStatusReasons / systemStatusLimitingReasons explain NOT_RUNNING
-        and LIMITED states. promoted_object_id is the app's adamId.
+        and LIMITED states. promoted_object_id is the app's adamId. Output is
+        compacted (noise fields dropped, targeting flattened); verbose=true
+        returns Apple's raw entities.
         """
         return await structure.list_campaigns(
-            ctx, account_id, status, display_status, name_contains, promoted_object_id
+            ctx, account_id, status, display_status, name_contains, promoted_object_id, verbose
         )
 
     @mcp.tool()
@@ -70,9 +73,10 @@ def build_server(ctx: AppContext):
         campaign_ids: list[str] | None = None,
         status: str | None = None,
         display_status: str | None = None,
+        verbose: bool = False,
     ) -> dict:
         """List ad groups with bid strategy, Search Match (automatedKeywordsOptIn), targeting, schedule, status."""
-        return await structure.list_ad_groups(ctx, account_id, campaign_ids, status, display_status)
+        return await structure.list_ad_groups(ctx, account_id, campaign_ids, status, display_status, verbose)
 
     @mcp.tool()
     async def list_keywords(
@@ -94,10 +98,15 @@ def build_server(ctx: AppContext):
         ad_group_ids: list[str] | None = None,
         status: str | None = None,
         include_creatives: bool = True,
+        verbose: bool = False,
     ) -> dict:
-        """List ads with status/reasons, joined with creative type, destination and eligibility."""
+        """List ads with status/reasons, joined with creative type, destination and eligibility.
+
+        Note: campaigns using the default App Store product page have no ad
+        entities at all (verified live); an empty list is normal for them.
+        """
         return await structure.list_ads(
-            ctx, account_id, campaign_ids, ad_group_ids, status, include_creatives
+            ctx, account_id, campaign_ids, ad_group_ids, status, include_creatives, verbose
         )
 
     @mcp.tool()
@@ -126,8 +135,10 @@ def build_server(ctx: AppContext):
         keywords/searchterms: deviceClass, storefront, countryOrRegion; ads:
         storefront, countryOrRegion.
         fields: subset of metrics (see apple-ads://report-fields); omit for all.
-        filters: [{field, operator, value}] on entity IDs/status, e.g.
-        {"field":"campaignId","operator":"IN","value":[123]}.
+        filters: [{field, operator, value}] on campaignId / adGroupId, e.g.
+        {"field":"campaignId","operator":"EQUALS","value":123}. keywords and
+        searchterms levels REQUIRE a campaignId filter (Apple rule). Rows
+        whose searchTermText is null are Apple's low-volume aggregate.
         Metrics: localSpend, impressions, taps, ttr, cpt, cpm, tapInstalls,
         viewInstalls, totalInstalls, new downloads vs redownloads, CPI, install
         rates, pre-orders. No conversion/revenue metrics exist in Apple Ads.

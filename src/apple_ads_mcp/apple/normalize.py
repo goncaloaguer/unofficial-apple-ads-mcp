@@ -19,6 +19,10 @@ def money(value: Any) -> dict[str, Any] | None:
     """Normalize a Money object; returns None for null/absent values."""
     if value is None:
         return None
+    # Some entity fields wrap Money one level deeper: {"value": {amount, currency}}
+    # (campaign dailyBudget, verified live 2026-09-22).
+    if isinstance(value, dict) and set(value) == {"value"} and isinstance(value["value"], dict):
+        value = value["value"]
     if isinstance(value, dict) and "amount" in value:
         try:
             amount = float(value["amount"]) if value["amount"] is not None else None
@@ -51,6 +55,8 @@ def normalize_entity(entity: dict[str, Any]) -> dict[str, Any]:
         if key in MONEY_FIELDS and isinstance(value, dict):
             out[key] = money(value)
         elif isinstance(value, dict) and set(value) <= {"amount", "currency"} and "amount" in value:
+            out[key] = money(value)
+        elif isinstance(value, dict) and set(value) == {"value"} and isinstance(value["value"], dict) and "amount" in value["value"]:
             out[key] = money(value)
         else:
             out[key] = value

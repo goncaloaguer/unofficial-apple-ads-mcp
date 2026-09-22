@@ -50,16 +50,20 @@ METRICS = (
 )
 COST_METRICS = frozenset({"localSpend", "cpt", "cpm", "tapInstallCPI", "totalAvgCPI"})
 
-# Curated filter fields per level (entity IDs and statuses only). Field names
-# follow the reporting metadata objects; exact server-side acceptance is a
-# Phase 1 live-verification item (docs/API_NOTES.md).
+# Curated filter fields per level. Verified live (2026-09-22): `campaignId`
+# and `adGroupId` are accepted; `keywordId` is rejected
+# ("Filters contain unsupported fields"); keyword and search-term reports
+# REQUIRE a `campaignId` filter ("campaignId filter is required for KEYWORD
+# reports when promotedObjectType is APPS"). Other names are unverified and
+# will surface Apple's validation message if wrong.
 FILTER_FIELDS = {
     "campaigns": ("campaignId", "campaignStatus", "promotedObjectId", "countryOrRegion"),
     "adgroups": ("campaignId", "adGroupId", "adGroupStatus", "countryOrRegion"),
     "ads": ("campaignId", "adGroupId", "adId", "countryOrRegion"),
-    "keywords": ("campaignId", "adGroupId", "keywordId", "keywordStatus", "matchType", "countryOrRegion"),
-    "searchterms": ("campaignId", "adGroupId", "keywordId", "countryOrRegion"),
+    "keywords": ("campaignId", "adGroupId", "keywordStatus", "matchType", "countryOrRegion"),
+    "searchterms": ("campaignId", "adGroupId", "countryOrRegion"),
 }
+REQUIRES_CAMPAIGN_FILTER = frozenset({"keywords", "searchterms"})
 
 
 def parse_date(value: str, name: str) -> dt.date:
@@ -149,6 +153,12 @@ def build_report_request(
     for f in filters or []:
         if f.get("field") not in allowed_filters:
             raise LimitExceeded(f"filter field {f.get('field')!r} not allowed at level {level}; allowed: {allowed_filters}")
+    if level in REQUIRES_CAMPAIGN_FILTER and not any(f.get("field") == "campaignId" for f in filters or []):
+        raise LimitExceeded(
+            f"{level} reports require a campaignId filter, e.g. "
+            '[{"field": "campaignId", "operator": "EQUALS", "value": <id>}] '
+            "(Apple rejects unfiltered keyword/search-term reports for apps)"
+        )
 
     include_rows = []
     if include_grand_total:
@@ -160,6 +170,9 @@ def build_report_request(
     if include_rows and level == "searchterms":
         raise LimitExceeded("options.includeRows is not supported for searchterms reports")
 
+    # `fields` is applied client-side after flattening: sending it upstream
+    # makes Apple drop the metadata block too (keyword text, match type, bid
+    # came back null — verified live 2026-09-22).
     body = report_query(
         start=start_d.isoformat(),
         end=end_d.isoformat(),
@@ -167,7 +180,6 @@ def build_report_request(
         granularity=gran,
         filters=filters,
         group_by=group_by,
-        fields=fields,
         include_rows=include_rows or None,
         page_size=page_size,
     )
