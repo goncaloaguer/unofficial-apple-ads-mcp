@@ -13,7 +13,7 @@ from apple_ads_mcp import reporting
 from apple_ads_mcp.auth.mcp_bearer import check_request, mcp_mount_path
 from apple_ads_mcp.config import Settings, load_settings
 from apple_ads_mcp.context import AppContext
-from apple_ads_mcp.tools import reporting_tools, structure
+from apple_ads_mcp.tools import analysis_tools, insights, reporting_tools, structure
 
 SERVER_NAME = "apple-ads-insights"
 INSTRUCTIONS = (
@@ -22,9 +22,16 @@ INSTRUCTIONS = (
     "with list_ad_accounts, then list_campaigns / list_ad_groups / "
     "list_keywords / list_ads for structure and get_report / "
     "get_daily_performance for metrics (levels: campaigns, adgroups, ads, "
-    "keywords, searchterms). Apple reports have no conversion or revenue "
-    "metrics; installs are the deepest in-platform outcome. Unofficial "
-    "community project; not affiliated with Apple Inc."
+    "keywords, searchterms). Analysis tools (compare_periods, rank_performance, "
+    "analyze_trends, analyze_pacing, analyze_keywords, analyze_search_terms, "
+    "get_account_history) compute deterministically server-side and return "
+    "formulas. Insight tools (diagnose_delivery, get_impression_share, "
+    "get_search_term_popularity, get_keyword_suggestions, get_recommendations, "
+    "get_target_cpa_suggestion, search_apps, get_app_details, search_geo, "
+    "check_app_eligibility) expose Apple's own signals read-only. Keyword and "
+    "search-term levels need campaign_ids. Apple reports have no conversion "
+    "or revenue metrics; installs are the deepest in-platform outcome. "
+    "Unofficial community project; not affiliated with Apple Inc."
 )
 
 
@@ -171,10 +178,263 @@ def build_server(ctx: AppContext):
         """Account KPIs by day for the last N full days (default 7): spend, impressions, taps, installs, TTR, CPT, CPI."""
         return await reporting_tools.get_daily_performance(ctx, days, account_id)
 
+    # ------------------------------------------------------------ Phase 2
+
+    @mcp.tool()
+    async def compare_periods(
+        period_a_start: str,
+        period_a_end: str,
+        period_b_start: str,
+        period_b_end: str,
+        level: str = "account",
+        campaign_ids: list[str] | None = None,
+        account_id: str | None = None,
+    ) -> dict:
+        """Compare two date ranges: absolute and % deltas (period_b relative to period_a).
+
+        level: account | campaigns | adgroups | keywords (keywords needs campaign_ids).
+        Metrics: spend, impressions, taps, installs (tap/view/total), new vs
+        redownloads, plus derived ttr, cpt, cpm, cpi, install rates.
+        """
+        return await analysis_tools.compare_periods(ctx, period_a_start, period_a_end, period_b_start, period_b_end, level, campaign_ids, account_id)
+
+    @mcp.tool()
+    async def rank_performance(
+        start: str,
+        end: str,
+        level: str = "campaigns",
+        metric: str = "cpi",
+        top_n: int = 10,
+        min_spend: float = 0.0,
+        group_by: str | None = None,
+        campaign_ids: list[str] | None = None,
+        account_id: str | None = None,
+    ) -> dict:
+        """Rank campaigns/adgroups/ads/keywords/searchterms (or a group_by dimension
+        such as storefront, countryOrRegion, deviceClass) by a metric.
+
+        Cost metrics (cpi, cpt, cpm, localSpend) rank ascending; others
+        descending. min_spend filters noise. keywords/searchterms need campaign_ids.
+        """
+        return await analysis_tools.rank_performance(ctx, start, end, level, metric, top_n, min_spend, group_by, campaign_ids, account_id)
+
+    @mcp.tool()
+    async def analyze_trends(
+        start: str,
+        end: str,
+        metric: str = "localSpend",
+        grain: str = "day",
+        campaign_ids: list[str] | None = None,
+        per_campaign: bool = False,
+        account_id: str | None = None,
+    ) -> dict:
+        """Time series of a metric (day | week | hour) with moving average and anomaly flags.
+
+        Account-level by default; per_campaign=true returns one series per campaign.
+        Apple windows apply: hour needs start within 7 days, day within 90, week ends >=14 days ago.
+        """
+        return await analysis_tools.analyze_trends(ctx, start, end, metric, grain, campaign_ids, per_campaign, account_id)
+
+    @mcp.tool()
+    async def analyze_pacing(
+        start: str,
+        end: str,
+        campaign_ids: list[str] | None = None,
+        account_id: str | None = None,
+    ) -> dict:
+        """Spend vs dailyBudget x days per campaign: utilization and flags (budget_capped, under_delivering, on_pace, not_enabled)."""
+        return await analysis_tools.analyze_pacing(ctx, start, end, campaign_ids, account_id)
+
+    @mcp.tool()
+    async def analyze_keywords(
+        campaign_ids: list[str],
+        start: str,
+        end: str,
+        ad_group_ids: list[str] | None = None,
+        min_impressions: int = 10,
+        zero_install_spend: float = 5.0,
+        top_n: int = 25,
+        account_id: str | None = None,
+    ) -> dict:
+        """Keyword efficiency for given campaigns: spend, taps, installs, CPI, TTR, cpt_vs_bid and flags
+        (impression_starved, spend_no_installs, low_install_rate, paying_near_bid). Summary lists best-CPI keywords and zero-install spenders."""
+        return await analysis_tools.analyze_keywords(ctx, campaign_ids, start, end, ad_group_ids, min_impressions, zero_install_spend, top_n, account_id)
+
+    @mcp.tool()
+    async def analyze_search_terms(
+        campaign_ids: list[str],
+        start: str,
+        end: str,
+        min_taps: int = 3,
+        top_n: int = 25,
+        account_id: str | None = None,
+    ) -> dict:
+        """Search-term mining for given campaigns: expansion_candidates (terms with installs that
+        are not exact keywords yet), negative_candidates (taps but no installs), top terms, and
+        Apple's low-volume aggregate bucket kept separate."""
+        return await analysis_tools.analyze_search_terms(ctx, campaign_ids, start, end, min_taps, top_n, account_id)
+
+    @mcp.tool()
+    async def get_account_history(
+        start: str,
+        end: str,
+        entity_types: list[str] | None = None,
+        event_types: list[str] | None = None,
+        campaign_ids: list[str] | None = None,
+        include_details: bool = False,
+        max_details: int = 10,
+        account_id: str | None = None,
+    ) -> dict:
+        """Change history (who changed what, when) for a range up to 6 months.
+
+        entity_types: Campaign, AdGroup, Keyword, NegativeKeyword, Ad, Creative, AdAccount.
+        event_types: CREATE, UPDATE, DELETE (filtered locally). include_details fetches
+        field-level before/after for up to max_details changes. Use to correlate
+        config changes with performance shifts (correlation, not causation).
+        """
+        return await analysis_tools.get_account_history(ctx, start, end, entity_types, event_types, campaign_ids, include_details, max_details, account_id)
+
+    # ------------------------------------------------------------ Phase 3
+
+    @mcp.tool()
+    async def diagnose_delivery(
+        campaign_ids: list[str] | None = None,
+        lookback_days: int = 3,
+        account_id: str | None = None,
+    ) -> dict:
+        """Why isn't it serving? Account/campaign/ad-group system statuses with reasons, plus
+        RUNNING campaigns with no impressions in the last N days."""
+        return await insights.diagnose_delivery(ctx, campaign_ids, lookback_days, account_id)
+
+    @mcp.tool()
+    async def check_app_eligibility(adam_id: str, countries: list[str] | None = None, account_id: str | None = None) -> dict:
+        """Whether an app (adamId) can run App Store ads, per country/placement/device."""
+        return await insights.check_app_eligibility(ctx, adam_id, countries, account_id)
+
+    @mcp.tool()
+    async def get_impression_share(
+        adam_id: str,
+        start: str,
+        end: str,
+        granularity: str = "DAILY",
+        report_type: str = "ALL_SLOTS",
+        countries: list[str] | None = None,
+        search_term_contains: str | None = None,
+        limit: int = 200,
+        account_id: str | None = None,
+    ) -> dict:
+        """Apple impression share by search term for your app (adamId): share bracket, rank, popularity.
+
+        DAILY up to 30 days, or WEEKLY_SUN_SAT up to 4 weeks starting on a Sunday. UTC.
+        report_type FIRST_SLOT (top position) or ALL_SLOTS.
+        """
+        return await insights.get_impression_share(ctx, adam_id, start, end, granularity, report_type, countries, search_term_contains, limit, account_id)
+
+    @mcp.tool()
+    async def get_search_term_popularity(
+        countries: list[str],
+        start: str,
+        end: str,
+        granularity: str = "WEEKLY_SUN_SAT",
+        genre: str | None = None,
+        search_term_contains: str | None = None,
+        limit: int = 100,
+        account_id: str | None = None,
+    ) -> dict:
+        """Apple's most-searched terms by storefront and genre (WEEKLY_SUN_SAT or MONTHLY), with rank and 1-100 popularity."""
+        return await insights.get_search_term_popularity(ctx, countries, start, end, granularity, genre, search_term_contains, limit, account_id)
+
+    @mcp.tool()
+    async def get_keyword_suggestions(
+        adam_id: str,
+        terms: list[str] | None = None,
+        countries: list[str] | None = None,
+        limit: int = 100,
+        account_id: str | None = None,
+    ) -> dict:
+        """Apple's keyword and phrase suggestions for an app (adamId), optionally seeded with terms and storefronts."""
+        return await insights.get_keyword_suggestions(ctx, adam_id, terms, countries, limit, account_id)
+
+    @mcp.tool()
+    async def get_recommendations(campaign_ids: list[str], kind: str = "both", account_id: str | None = None) -> dict:
+        """Apple's daily-budget and Target CPA recommendations for campaigns (read-only; cannot apply/dismiss). kind: both | daily_budget | target_cpa."""
+        return await insights.get_recommendations(ctx, campaign_ids, kind, account_id)
+
+    @mcp.tool()
+    async def get_target_cpa_suggestion(adam_id: str, countries: list[str] | None = None, account_id: str | None = None) -> dict:
+        """Apple's suggested Target CPA for a new Max Conversions campaign for an app, per country."""
+        return await insights.get_target_cpa_suggestion(ctx, adam_id, countries, account_id)
+
+    @mcp.tool()
+    async def search_apps(
+        query: str | None = None,
+        return_owned_apps: bool = False,
+        storefronts: list[str] | None = None,
+        limit: int = 20,
+        account_id: str | None = None,
+    ) -> dict:
+        """Search the App Store by app/developer name (>=3 chars), or list apps this org owns (return_owned_apps=true)."""
+        return await insights.search_apps(ctx, query, return_owned_apps, storefronts, limit, account_id)
+
+    @mcp.tool()
+    async def get_app_details(adam_id: str, account_id: str | None = None) -> dict:
+        """App metadata (name, developer, genres, storefronts) and its custom product pages."""
+        return await insights.get_app_details(ctx, adam_id, account_id)
+
+    @mcp.tool()
+    async def search_geo(
+        query: str | None = None,
+        entity: str | None = None,
+        country_code: str | None = None,
+        ids: list[str] | None = None,
+        limit: int = 50,
+        account_id: str | None = None,
+    ) -> dict:
+        """Geo targeting lookup: search by name (entity: COUNTRY | ADMIN_AREA | LOCALITY, optional country_code)
+        or resolve numeric geo IDs seen in ad-group targeting (ids=[...])."""
+        return await insights.search_geo(ctx, query, entity, country_code, ids, limit, account_id)
+
+    @mcp.tool()
+    async def get_supported_languages(country_code: str | None = None, account_id: str | None = None) -> dict:
+        """Supported app languages/locales, optionally for one country."""
+        return await insights.get_supported_languages(ctx, country_code, account_id)
+
     @mcp.resource("apple-ads://report-fields")
     def report_fields() -> str:
         """Report metrics, groupBy dimensions, granularity windows and time-zone rules."""
         return reporting.report_fields_document()
+
+    @mcp.resource("apple-ads://api-notes")
+    def api_notes() -> str:
+        """Live-verified Apple API behaviours that differ from the docs (docs/API_NOTES.md)."""
+        from importlib import resources as ilres
+
+        try:
+            return ilres.files("apple_ads_mcp").joinpath("API_NOTES.md").read_text()
+        except (FileNotFoundError, OSError):
+            return "See docs/API_NOTES.md in the repository."
+
+    @mcp.prompt()
+    def weekly_performance_review(days: int = 7) -> str:
+        """Weekly Apple Ads review: this week vs last, movers, pacing, keyword and search-term actions."""
+        return (
+            f"Review Apple Ads for the last {days} full days. 1) list_ad_accounts, then get_daily_performance(days={days}). "
+            f"2) compare_periods for the last {days} days vs the {days} before at level=campaigns. "
+            "3) rank_performance by cpi and by totalInstalls for the period with min_spend > 0. "
+            "4) analyze_pacing for the period. 5) For the top-spend campaigns, analyze_search_terms and analyze_keywords. "
+            "Report observations first, then recommendations, clearly separated; state which numbers are Apple-reported and which are derived; "
+            "note that installs, not trials or revenue, are the deepest metric available here."
+        )
+
+    @mcp.prompt()
+    def diagnose_performance_drop(metric: str = "totalInstalls") -> str:
+        """Investigate a drop in a metric: trend, changes, delivery, keywords."""
+        return (
+            f"Investigate a drop in {metric}. 1) analyze_trends for the last 30 days by day to locate when it started. "
+            "2) get_account_history for the window around the change (entity_types Campaign, AdGroup, Keyword). "
+            "3) diagnose_delivery. 4) compare_periods before/after at level=campaigns, then keywords for affected campaigns. "
+            "Present evidence before interpretation; correlation with account changes is not proof of cause."
+        )
 
     @mcp.resource("apple-ads://capabilities")
     def capabilities() -> str:

@@ -26,7 +26,10 @@ jobs:
       # any dependency is installed, so a supply-chain issue can never mask a
       # safety regression. (test_client_e2e skips itself without httpx.)
       - name: Read-only invariants and unit tests (no dependencies)
-        run: python -m unittest tests.test_read_only_invariants tests.test_core_units tests.test_reporting -v
+        run: python -m unittest tests.test_read_only_invariants tests.test_core_units tests.test_reporting tests.test_analysis -v
+
+      - name: Packaged API notes match docs/API_NOTES.md
+        run: diff -u docs/API_NOTES.md src/apple_ads_mcp/API_NOTES.md
 
       - name: Operation inventory / registry drift check
         run: python scripts/check_api_drift.py

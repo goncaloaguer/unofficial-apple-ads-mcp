@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.0 — Phases 2 and 3: analysis, diagnostics and Apple insights
+
+- **Analysis tools (Phase 2)**: `compare_periods`, `rank_performance`,
+  `analyze_trends`, `analyze_pacing`, `analyze_keywords`,
+  `analyze_search_terms`, `get_account_history`. All derived values
+  (CPI, CPT, TTR, install rates, deltas, utilization, anomalies) are
+  computed locally from Apple's summable totals with the formula returned
+  alongside each result; zero denominators yield `null`.
+- **Apple-intelligence tools (Phase 3)**: `diagnose_delivery`,
+  `check_app_eligibility`, `get_impression_share`,
+  `get_search_term_popularity`, `get_keyword_suggestions`,
+  `get_recommendations`, `get_target_cpa_suggestion`, `search_apps`,
+  `get_app_details`, `search_geo`, `get_supported_languages`.
+- Prompts `weekly_performance_review` and `diagnose_performance_drop`;
+  resource `apple-ads://api-notes` (the packaged copy of
+  docs/API_NOTES.md, CI-checked to stay identical).
+- Envelope: the response-size warning now fires only when the size ceiling
+  truncated rows, not when a tool's own `limit` did.
+- Registry unchanged: every new tool composes already-enabled read
+  operations; the read-only invariants suite still passes and no write path
+  became reachable.
+- Tests: 126 (new `tests/test_analysis.py`; mocked end-to-end coverage for
+  all Phase 2/3 tools).
+
 ## 0.1.3 — second live round
 
 - `list_keywords`: requires campaign_ids or ad_group_ids; negative keywords

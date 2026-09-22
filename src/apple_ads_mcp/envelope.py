@@ -24,14 +24,16 @@ def build_envelope(
     }
     if max_response_bytes:
         size = len(json.dumps(envelope, default=str).encode())
+        size_truncated = False
         while size > max_response_bytes and isinstance(data, list) and data:
             keep = max(1, len(data) // 2)
             data = data[:keep]
             envelope["data"] = data
             envelope["meta"]["truncated"] = True
             envelope["meta"]["rows_returned"] = len(data)
+            size_truncated = True
             size = len(json.dumps(envelope, default=str).encode())
-        if envelope["meta"].get("truncated"):
+        if size_truncated:  # only the size loop, not a caller's own limit
             envelope["warnings"].append(
                 "response truncated to fit the size ceiling; narrow the "
                 "request (fewer fields, shorter range, filters) for complete "

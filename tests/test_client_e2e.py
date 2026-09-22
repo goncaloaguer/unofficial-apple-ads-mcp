@@ -25,7 +25,7 @@ from apple_ads_mcp.config import load_settings  # noqa: E402
 from apple_ads_mcp.context import AppContext  # noqa: E402
 from apple_ads_mcp.policy.limits import LimitExceeded, SubrequestBudget  # noqa: E402
 from apple_ads_mcp.policy.registry import OperationDenied  # noqa: E402
-from apple_ads_mcp.tools import reporting_tools, structure  # noqa: E402
+from apple_ads_mcp.tools import insights, reporting_tools, structure  # noqa: E402
 
 
 def _gen_pem() -> str:
@@ -127,7 +127,7 @@ class FakeApple:
                 cid = filters["campaignId"]["value"]
                 gid = 100 * cid
             neg = path.endswith("negative-keywords/query")
-            rows = [{"id": (1000 if neg else 10) * cid + i, "campaignId": cid, "adGroupId": gid, "text": f"{'neg' if neg else 'kw'}{i}",
+            rows = [{"id": (1000 if neg else 10) * cid + i, "campaignId": cid, "adGroupId": gid, "text": ("neg" if neg else "kw") + str(i) if i else ("neg0" if neg else "adhd"),
                      "matchType": "EXACT", "status": "ENABLED", "adAccountId": 123456789, "deleted": False,
                      **({} if neg else {"bid": {"amount": "2.5", "currency": "USD"}, "displayStatus": "AD_GROUP_ON_HOLD"})}
                     for i in range(2)]
@@ -135,6 +135,83 @@ class FakeApple:
                 "result": rows, "pagination": {"offset": 0, "pageSize": 1000, "totalCount": len(rows)}})
         if path == "/v1/campaigns/1":
             return httpx.Response(200, headers=self.rate_headers, json={"result": self.campaigns[0]})
+        if path == "/v1/adgroups/query":
+            body = json.loads(request.content)
+            cid = next((f["value"] for f in body.get("filters", []) if f["field"] == "campaignId"), 1)
+            cid = cid[0] if isinstance(cid, list) else cid
+            rows = [{"id": 100 * cid, "campaignId": cid, "name": f"AG{cid}", "status": "ENABLED", "systemStatus": "RUNNING",
+                     "displayStatus": "RUNNING", "systemStatusReasons": [], "bidStrategy": {"bid": {"amount": "2", "currency": "USD"}}}]
+            return httpx.Response(200, headers=self.rate_headers, json={"result": rows, "pagination": {"offset": 0, "pageSize": 500, "totalCount": 1}})
+        if path in ("/v1/reports/apps/keywords/query", "/v1/reports/apps/searchterms/query"):
+            body = json.loads(request.content)
+            cid = next((f["value"] for f in body.get("filters", []) if f["field"] == "campaignId"), None)
+            if cid is None:
+                return httpx.Response(400, headers=self.rate_headers, json={"error": {"code": "VALIDATION_ERROR", "details": [
+                    {"code": "INVALID_VALUE_FIELD", "message": "campaignId filter is required for KEYWORD reports when promotedObjectType is APPS."}]}})
+            m = lambda spend, imp, taps, inst: {"localSpend": {"amount": str(spend), "currency": "USD"}, "impressions": imp, "taps": taps,  # noqa: E731
+                                                "tapInstalls": inst, "viewInstalls": 0, "totalInstalls": inst, "totalNewDownloads": inst, "totalRedownloads": 0}
+            if path.endswith("keywords/query"):
+                rows = [
+                    {"metadata": {"id": 11, "text": "adhd", "campaignId": cid, "adGroupId": 100 * cid, "status": "ENABLED", "matchType": "EXACT", "bid": {"amount": "2.5", "currency": "USD"}}, "totalMetrics": m(40, 200, 20, 10), "insights": {"bidRecommendation": {}}},
+                    {"metadata": {"id": 12, "text": "adhd test", "campaignId": cid, "adGroupId": 100 * cid, "status": "ENABLED", "matchType": "EXACT", "bid": {"amount": "2", "currency": "USD"}}, "totalMetrics": m(12, 50, 6, 0)},
+                    {"metadata": {"id": 13, "text": "focus timer", "campaignId": cid, "adGroupId": 100 * cid, "status": "ENABLED", "matchType": "EXACT", "bid": {"amount": "1", "currency": "USD"}}, "totalMetrics": m(0, 2, 0, 0)},
+                ]
+            else:
+                kw = {"id": 11, "text": "adhd", "matchType": "EXACT", "bid": {"amount": "2.5", "currency": "USD"}}
+                rows = [
+                    {"metadata": {"searchTermText": "adhd", "searchTermSource": "TARGETED", "campaignId": cid, "adGroupId": 100 * cid, "keyword": kw}, "totalMetrics": m(30, 150, 15, 8)},
+                    {"metadata": {"searchTermText": "adhd planner", "searchTermSource": "AUTO", "campaignId": cid, "adGroupId": 100 * cid, "keyword": kw}, "totalMetrics": m(9, 40, 5, 2)},
+                    {"metadata": {"searchTermText": "adhd meme", "searchTermSource": "AUTO", "campaignId": cid, "adGroupId": 100 * cid, "keyword": kw}, "totalMetrics": m(6, 30, 4, 0)},
+                    {"metadata": {"searchTermText": None, "searchTermSource": "TARGETED", "campaignId": cid, "adGroupId": 100 * cid, "keyword": kw}, "totalMetrics": m(5, 20, 3, 1)},
+                ]
+            return httpx.Response(200, headers=self.rate_headers, json={"result": {"rows": rows}, "pagination": {"offset": 0, "pageSize": 500, "totalCount": len(rows)}})
+        if path == "/v1/change-history/query":
+            body = json.loads(request.content)
+            assert body["filters"][0]["field"] == "eventTime" and body["options"]["needTotals"] in ("true", "false")
+            rows = [{"transactionId": "t1", "eventType": "UPDATE", "eventTime": "2026-08-10T10:00:00Z", "entityType": "Campaign", "count": 1,
+                     "metas": [{"entityId": 1, "detailId": "Campaign.1.t1"}], "userType": "CUSTOMER", "modifiedBy": 42},
+                    {"transactionId": "t2", "eventType": "CREATE", "eventTime": "2026-08-11T10:00:00Z", "entityType": "Keyword", "count": 3, "metas": [], "userType": "CUSTOMER_API", "modifiedBy": 42}]
+            return httpx.Response(200, headers=self.rate_headers, json={"result": rows, "pagination": {"offset": 0, "pageSize": 200, "totalCount": 2}})
+        if path == "/v1/change-history/Campaign.1.t1":
+            return httpx.Response(200, headers=self.rate_headers, json={"result": {"detailId": "Campaign.1.t1", "details": [{"changes": [{"field": "dailyBudget", "oldValues": ["50"], "newValues": ["100"]}]}]}})
+        if path == "/v1/insights/apps/impression-share/query":
+            body = json.loads(request.content)
+            assert body["timeRange"]["timeZone"] == "UTC" and body["options"]["impressionShareReportType"] in ("FIRST_SLOT", "ALL_SLOTS")
+            rows = [{"day": "2026-08-01", "promotedObjectId": "999", "countryOrRegion": "US", "searchTerm": "adhd", "lowImpressionShare": 0.4, "highImpressionShare": 0.4, "rank": 2, "searchPopularity1to5": 5}]
+            return httpx.Response(200, headers=self.rate_headers, json={"result": {"rows": rows}, "pagination": {"offset": 0, "pageSize": 1000, "totalCount": 1}})
+        if path == "/v1/insights/apps/search-term-popularity/query":
+            rows = [{"week": "2026-08-02", "countryOrRegion": "US", "genre": "Health & Fitness", "searchTerm": "adhd", "rankInGenre": 3, "searchPopularity1to100": 80}]
+            return httpx.Response(200, headers=self.rate_headers, json={"result": {"rows": rows}, "pagination": {"offset": 0, "pageSize": 1000, "totalCount": 1}})
+        if path.startswith("/v1/suggestions/") or path.startswith("/v1/recommendations/"):
+            body = json.loads(request.content)
+            fields = {f["field"]: f["value"] for f in body["filters"]}
+            assert isinstance(fields.get("promotedObjectId"), list)
+            if path.endswith("keywords/query"):
+                rows = [{"text": "adhd planner", "popularity": 70}, {"text": "focus app", "popularity": 90}]
+            elif path.endswith("phrases/query"):
+                rows = [{"phrase": "adhd tools", "popularity": 50}]
+            elif path.endswith("target-cpas/query") and "suggestions" in path:
+                rows = [{"promotedObjectId": "999", "countryOrRegion": "US", "suggestedTargetCPA": {"amount": "3.5", "currency": "USD"}}]
+            else:
+                rows = [{"id": 5, "campaignId": int(fields["promotedObjectId"][0]), "suggestedDailyBudgetAmount": {"amount": "150", "currency": "USD"}, "expectedInstalls": 40}]
+            return httpx.Response(200, headers=self.rate_headers, json={"result": rows, "pagination": {"offset": 0, "pageSize": 100, "totalCount": len(rows)}})
+        if path == "/v1/search/apps":
+            assert "query" in request.url.params or request.url.params.get("returnOwnedApps") == "true"
+            return httpx.Response(200, headers=self.rate_headers, json={"result": [{"adamId": 999, "appName": "Example App"}]})
+        if path == "/v1/apps/999":
+            return httpx.Response(200, headers=self.rate_headers, json={"result": {"id": 999, "appName": "Example App", "availableStorefronts": ["US", "GB"]}})
+        if path == "/v1/product-pages/query":
+            return httpx.Response(200, headers=self.rate_headers, json={"result": [], "pagination": {"offset": 0, "pageSize": 100, "totalCount": 0}})
+        if path == "/v1/search/geo":
+            if request.method == "GET":
+                assert request.url.params["supplySource"] == "APPSTORE"
+            else:
+                assert json.loads(request.content)["supplySource"] == "APPSTORE"
+            return httpx.Response(200, headers=self.rate_headers, json={"result": [{"id": 2018, "entity": "ADMIN_AREA", "displayName": "California"}]})
+        if path == "/v1/eligibilities/apps/query":
+            return httpx.Response(200, headers=self.rate_headers, json={"result": [{"adamId": 999, "countryOrRegion": "US", "state": "ELIGIBLE"}], "pagination": {"offset": 0, "pageSize": 500, "totalCount": 1}})
+        if path == "/v1/metadata/apps/supported-languages/query":
+            return httpx.Response(200, headers=self.rate_headers, json={"result": [{"code": "en-US"}], "pagination": {"offset": 0, "pageSize": 500, "totalCount": 1}})
         return httpx.Response(404, json={"error": {"code": "not_found", "message": path}})
 
 
@@ -321,6 +398,123 @@ class ToolTests(ClientTests):
         await structure.list_campaigns(self.ctx)
         with self.assertRaises(LimitExceeded):
             await structure.list_campaigns(self.ctx)
+
+
+class AnalysisToolTests(ClientTests):
+    async def test_compare_periods_account_and_campaigns(self):
+        from apple_ads_mcp.tools import analysis_tools
+
+        out = await analysis_tools.compare_periods(self.ctx, "2026-08-01", "2026-08-07", "2026-08-08", "2026-08-14")
+        row = {c["metric"]: c for c in out["data"][0]["comparison"]}
+        self.assertEqual(row["localSpend"]["period_a"], 20.0)
+        self.assertEqual(row["localSpend"]["delta"], 0.0)
+        self.assertEqual(row["cpi"]["period_b"], 2.0)
+        out = await analysis_tools.compare_periods(self.ctx, "2026-08-01", "2026-08-07", "2026-08-08", "2026-08-14", level="campaigns")
+        self.assertEqual({d["id"] for d in out["data"]}, {1, 2})
+
+    async def test_rank_by_cost_metric_ascending(self):
+        from apple_ads_mcp.tools import analysis_tools
+
+        out = await analysis_tools.rank_performance(self.ctx, "2026-08-01", "2026-08-07", level="keywords", metric="cpi", campaign_ids=["1"])
+        self.assertEqual([r["id"] for r in out["data"]], [11])  # only the keyword with installs has a cpi
+        out = await analysis_tools.rank_performance(self.ctx, "2026-08-01", "2026-08-07", level="keywords", metric="localSpend", campaign_ids=["1"], min_spend=1)
+        self.assertEqual([r["id"] for r in out["data"]], [12, 11])  # ascending cost
+        with self.assertRaises(LimitExceeded):
+            await analysis_tools.rank_performance(self.ctx, "2026-08-01", "2026-08-07", level="keywords", metric="cpi")
+
+    async def test_trends_and_pacing(self):
+        from apple_ads_mcp.tools import analysis_tools
+
+        out = await analysis_tools.analyze_trends(self.ctx, "2026-08-25", "2026-09-01", metric="taps")
+        self.assertEqual([p["date"] for p in out["data"][0]["series"]], ["2026-08-30", "2026-08-31"])
+        self.assertEqual(out["data"][0]["series"][0]["taps"], 100)
+        out = await analysis_tools.analyze_pacing(self.ctx, "2026-08-01", "2026-08-10")
+        row = next(d for d in out["data"] if d["id"] == 1)
+        self.assertEqual(row["expected_spend"], 500.0)  # 50 x 10 days
+        self.assertEqual(row["flag"], "under_delivering")
+
+    async def test_analyze_keywords_flags(self):
+        from apple_ads_mcp.tools import analysis_tools
+
+        out = await analysis_tools.analyze_keywords(self.ctx, ["1"], "2026-08-01", "2026-08-07")
+        by_id = {k["id"]: k for k in out["data"]}
+        self.assertIn("spend_no_installs", by_id[12]["flags"])
+        self.assertIn("impression_starved", by_id[13]["flags"])
+        self.assertEqual(by_id[11]["cpi"], 4.0)
+        self.assertEqual(by_id[11]["cpt_vs_bid"], 0.8)
+        self.assertEqual(out["summary"]["best_cpi"][0]["id"], 11)
+
+    async def test_analyze_search_terms_classification(self):
+        from apple_ads_mcp.tools import analysis_tools
+
+        out = await analysis_tools.analyze_search_terms(self.ctx, ["1"], "2026-08-01", "2026-08-07")
+        exp = [t["searchTermText"] for t in out["data"]["expansion_candidates"]]
+        neg = [t["searchTermText"] for t in out["data"]["negative_candidates"]]
+        self.assertEqual(exp, ["adhd planner"])  # has installs and is not an exact keyword
+        self.assertEqual(neg, ["adhd meme"])
+        self.assertEqual(out["summary"]["low_volume_aggregate"]["installs"], 1)
+        self.assertTrue(next(t for t in out["data"]["top_terms_by_installs"] if t["searchTermText"] == "adhd")["is_exact_keyword"])
+
+    async def test_account_history_with_details(self):
+        from apple_ads_mcp.tools import analysis_tools
+
+        out = await analysis_tools.get_account_history(self.ctx, "2026-08-01", "2026-08-31", event_types=["UPDATE"], include_details=True)
+        self.assertEqual(len(out["data"]["changes"]), 1)
+        self.assertEqual(out["data"]["details"][0]["details"][0]["changes"][0]["field"], "dailyBudget")
+        with self.assertRaises(LimitExceeded):
+            await analysis_tools.get_account_history(self.ctx, "2026-01-01", "2026-08-31")
+
+
+class InsightToolTests(ClientTests):
+    async def test_diagnose_delivery(self):
+        self.fake.campaigns[1].update({"systemStatus": "NOT_RUNNING", "displayStatus": "ON_HOLD", "systemStatusReasons": ["PAYMENT_MODEL_NOT_SET"]})
+        out = await insights.diagnose_delivery(self.ctx, campaign_ids=["1", "2"])
+        issues = {(f["level"], f["id"]): f for f in out["data"]}
+        self.assertIn(("campaign", 2), issues)
+        self.assertEqual(issues[("campaign", 2)]["reasons"], ["PAYMENT_MODEL_NOT_SET"])
+        self.assertEqual(out["summary"]["account_status"], "ACTIVE")
+
+    async def test_impression_share_windows(self):
+        out = await insights.get_impression_share(self.ctx, "999", "2026-08-01", "2026-08-07")
+        self.assertEqual(out["data"][0]["searchTerm"], "adhd")
+        with self.assertRaises(LimitExceeded):
+            await insights.get_impression_share(self.ctx, "999", "2026-07-01", "2026-08-07")
+        with self.assertRaises(LimitExceeded):  # not a Sunday
+            await insights.get_impression_share(self.ctx, "999", "2026-08-03", "2026-08-16", granularity="WEEKLY_SUN_SAT")
+        await insights.get_impression_share(self.ctx, "999", "2026-08-02", "2026-08-15", granularity="WEEKLY_SUN_SAT")
+
+    async def test_popularity_suggestions_recommendations(self):
+        out = await insights.get_search_term_popularity(self.ctx, ["us"], "2026-08-02", "2026-08-08")
+        self.assertEqual(out["data"][0]["rankInGenre"], 3)
+        out = await insights.get_keyword_suggestions(self.ctx, "999", terms=["adhd"], countries=["US"])
+        self.assertEqual([k["text"] for k in out["data"]["keywords"]], ["focus app", "adhd planner"])
+        self.assertEqual(out["data"]["phrases"][0]["phrase"], "adhd tools")
+        out = await insights.get_recommendations(self.ctx, ["1"])
+        self.assertEqual(out["data"]["daily_budget"][0]["suggestedDailyBudgetAmount"], 150.0)
+        out = await insights.get_target_cpa_suggestion(self.ctx, "999", ["US"])
+        self.assertEqual(out["data"][0]["suggestedTargetCPA"], 3.5)
+
+    async def test_lookups(self):
+        out = await insights.search_apps(self.ctx, query="example")
+        self.assertEqual(out["data"][0]["adamId"], 999)
+        with self.assertRaises(LimitExceeded):
+            await insights.search_apps(self.ctx, query="ab")
+        out = await insights.get_app_details(self.ctx, "999")
+        self.assertEqual(out["summary"]["storefronts"], 2)
+        out = await insights.search_geo(self.ctx, ids=["2018"])
+        self.assertEqual(out["data"][0]["displayName"], "California")
+        out = await insights.search_geo(self.ctx, query="Calif", entity="admin_area", country_code="us")
+        self.assertEqual(len(out["data"]), 1)
+        out = await insights.check_app_eligibility(self.ctx, "999", ["US"])
+        self.assertEqual(out["summary"]["by_state"], {"ELIGIBLE": 1})
+        out = await insights.get_supported_languages(self.ctx, "US")
+        self.assertEqual(out["data"][0]["code"], "en-US")
+
+    async def test_recommendation_endpoints_never_apply(self):
+        await insights.get_recommendations(self.ctx, ["1", "2"])
+        for r in self.fake.requests:
+            self.assertNotIn("/apply", r.url.path)
+            self.assertNotIn("/dismiss", r.url.path)
 
 
 class StartupSequenceTests(unittest.TestCase):
