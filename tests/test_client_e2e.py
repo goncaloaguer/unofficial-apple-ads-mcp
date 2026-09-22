@@ -111,15 +111,26 @@ class FakeApple:
                 "pagination": {"offset": 0, "pageSize": 500, "totalCount": 2}})
         if path in ("/v1/keywords/query", "/v1/negative-keywords/query"):
             body = json.loads(request.content)
-            for f in body.get("filters", []):
-                if f["field"] == "campaignId" and f["operator"] != "EQUALS":
+            filters = {f["field"]: f for f in body.get("filters", [])}
+            for f in filters.values():
+                if f["field"] in ("campaignId", "adGroupId") and f["operator"] != "EQUALS":
                     return httpx.Response(400, headers=self.rate_headers, json={"error": {
                         "code": "VALIDATION_ERROR", "details": [{"code": "INVALID_INPUT",
-                        "message": "campaignId condition must use EQUALS operator"}]}})
-            cid = next((f["value"] for f in body.get("filters", []) if f["field"] == "campaignId"), None)
-            rows = [{"id": 10 * cid + i, "campaignId": cid, "adGroupId": 100 * cid, "text": f"kw{i}",
-                     "matchType": "EXACT", "bid": {"amount": "2.5", "currency": "USD"}, "status": "ENABLED",
-                     "adAccountId": 123456789, "deleted": False} for i in range(2)] if cid else []
+                        "message": f"{f['field']} condition must use EQUALS operator"}]}})
+            if path.endswith("negative-keywords/query") and "adGroupId" not in filters:
+                return httpx.Response(400, headers=self.rate_headers, json={"error": {
+                    "code": "VALIDATION_ERROR", "details": [{"code": "INVALID_INPUT", "message": "adGroupId condition is required"}]}})
+            if "adGroupId" in filters:
+                gid = filters["adGroupId"]["value"]
+                cid = gid // 100
+            else:
+                cid = filters["campaignId"]["value"]
+                gid = 100 * cid
+            neg = path.endswith("negative-keywords/query")
+            rows = [{"id": (1000 if neg else 10) * cid + i, "campaignId": cid, "adGroupId": gid, "text": f"{'neg' if neg else 'kw'}{i}",
+                     "matchType": "EXACT", "status": "ENABLED", "adAccountId": 123456789, "deleted": False,
+                     **({} if neg else {"bid": {"amount": "2.5", "currency": "USD"}, "displayStatus": "AD_GROUP_ON_HOLD"})}
+                    for i in range(2)]
             return httpx.Response(200, headers=self.rate_headers, json={
                 "result": rows, "pagination": {"offset": 0, "pageSize": 1000, "totalCount": len(rows)}})
         if path == "/v1/campaigns/1":
@@ -257,12 +268,34 @@ class ToolTests(ClientTests):
 
     async def test_list_keywords_fans_out_equals_per_campaign(self):
         out = await structure.list_keywords(self.ctx, campaign_ids=["1", "2"], include_negative=True)
-        self.assertEqual([k["id"] for k in out["data"]["keywords"]], [10, 11, 20, 21])
-        self.assertEqual(out["data"]["keywords"][0]["bid"], {"amount": 2.5, "currency": "USD"})
-        self.assertNotIn("adAccountId", out["data"]["keywords"][0])  # compacted
+        positives = [k for k in out["data"] if not k.get("negative")]
+        negatives = [k for k in out["data"] if k.get("negative")]
+        self.assertEqual([k["id"] for k in positives], [10, 11, 20, 21])
+        self.assertEqual(positives[0]["bid"], 2.5)
+        self.assertEqual(positives[0]["displayStatus"], "AD_GROUP_ON_HOLD")
+        self.assertNotIn("adAccountId", positives[0])  # compacted
+        self.assertEqual(out["summary"]["currency"], "USD")
         self.assertEqual(out["summary"]["negative_keywords"], 4)
+        self.assertEqual({n["adGroupId"] for n in negatives}, {100, 200})
         kw_bodies = [json.loads(r.content) for r in self.fake.requests if r.url.path == "/v1/keywords/query"]
         self.assertEqual([b["filters"][0]["operator"] for b in kw_bodies], ["EQUALS", "EQUALS"])
+        neg_bodies = [json.loads(r.content) for r in self.fake.requests if r.url.path == "/v1/negative-keywords/query"]
+        self.assertTrue(all(b["filters"][0]["field"] == "adGroupId" for b in neg_bodies))
+
+    async def test_list_keywords_requires_scope_and_limits(self):
+        with self.assertRaises(ValueError):
+            await structure.list_keywords(self.ctx)
+        out = await structure.list_keywords(self.ctx, campaign_ids=["1"], limit=1)
+        self.assertEqual(len(out["data"]), 1)
+        self.assertTrue(out["meta"]["truncated"])
+        self.assertTrue(any("returning the first 1" in w for w in out["warnings"]))
+
+    async def test_display_status_filtered_locally(self):
+        self.fake.campaigns[0]["displayStatus"] = "ON_HOLD"
+        out = await structure.list_campaigns(self.ctx, display_status="on_hold")
+        self.assertEqual([c["id"] for c in out["data"]], [1])
+        sent = json.loads(self.fake.requests[-1].content)
+        self.assertNotIn("displayStatus", json.dumps(sent.get("filters", [])))
 
     async def test_list_campaigns_compacts_and_verbose_keeps_raw(self):
         self.fake.campaigns[0]["regulationResponses"] = [{"regulationType": "X", "responseValue": "NOT_ANSWERED"}]

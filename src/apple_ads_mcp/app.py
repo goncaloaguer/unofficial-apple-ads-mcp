@@ -85,10 +85,18 @@ def build_server(ctx: AppContext):
         ad_group_ids: list[str] | None = None,
         status: str | None = None,
         include_negative: bool = False,
+        text_contains: str | None = None,
+        limit: int = 300,
     ) -> dict:
-        """List keywords (bid, matchType EXACT/BROAD, status); include_negative adds negative keywords."""
+        """List keywords (bid, matchType EXACT/BROAD, status) for given campaigns or ad groups.
+
+        campaign_ids or ad_group_ids is required (Apple rejects account-wide
+        keyword queries). include_negative adds ad-group negative keywords.
+        text_contains narrows by keyword text; limit caps rows (default 300)
+        — campaigns often hold hundreds of keywords, so narrow by ad group.
+        """
         return await structure.list_keywords(
-            ctx, account_id, campaign_ids, ad_group_ids, status, include_negative
+            ctx, account_id, campaign_ids, ad_group_ids, status, include_negative, text_contains, limit
         )
 
     @mcp.tool()

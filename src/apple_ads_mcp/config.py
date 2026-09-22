@@ -61,10 +61,14 @@ class Settings:
     max_page_size: int = 1000
     max_report_days: int = 90
     max_entity_ids: int = 100
-    max_response_bytes: int = 2 * 1024 * 1024
+    # Chat clients stop rendering tool results well below Reddit's 2 MiB
+    # ceiling (a 57 KB campaign list was refused live, 2026-09-22); the
+    # envelope halves `data` with a warning past this size. MAX_RESPONSE_BYTES
+    # overrides it for header-capable clients that handle large payloads.
+    max_response_bytes: int = 40_000
     api_base_url: str = "https://api.ads.apple.com"  # registry paths carry the /v1 prefix
     token_url: str = "https://appleid.apple.com/auth/oauth2/token"
-    user_agent: str = "apple-ads-insights-mcp/0.1.2 (+https://github.com/goncaloaguer/unofficial-apple-ads-mcp)"
+    user_agent: str = "apple-ads-insights-mcp/0.1.3 (+https://github.com/goncaloaguer/unofficial-apple-ads-mcp)"
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -207,5 +211,6 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
         mcp_path_secret=path_secret,
         transport=transport,
         port=int(_get("PORT") or "8080"),
+        max_response_bytes=int(_get("MAX_RESPONSE_BYTES") or 40_000),
         warnings=tuple(warnings),
     )

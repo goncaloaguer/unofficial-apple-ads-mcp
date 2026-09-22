@@ -66,16 +66,24 @@ def compact(entity: dict[str, Any], verbose: bool) -> dict[str, Any]:
     return out
 
 
-def _status_filters(status: str | None, display_status: str | None) -> list[dict[str, Any]]:
+def _status_filters(status: str | None, display_status: str | None = None) -> list[dict[str, Any]]:
+    """Upstream filters. `status` is queryable; `displayStatus` is NOT
+    ("Field, displayStatus, is invalid" — live 2026-09-22) and is applied
+    locally by `_display_filter`."""
     filters: list[dict[str, Any]] = []
     if status:
         s = status.upper()
         if s not in _STATUS_VALUES:
             raise ValueError(f"status must be one of {_STATUS_VALUES}")
         filters.append({"field": "status", "operator": "EQUALS", "value": s})
-    if display_status:
-        filters.append({"field": "displayStatus", "operator": "EQUALS", "value": display_status.upper()})
     return filters
+
+
+def _display_filter(rows: list[dict], display_status: str | None) -> list[dict]:
+    if not display_status:
+        return rows
+    wanted = display_status.upper()
+    return [r for r in rows if str(r.get("displayStatus", "")).upper() == wanted]
 
 
 def _coerce_ids(ids: list[str]) -> list[Any]:
@@ -159,6 +167,8 @@ async def list_campaigns(
     rows, meta = await ctx.client.paginate(
         "POST", "/v1/campaigns/query", budget=budget, account_id=account, json_body=body
     )
+    rows = _display_filter(rows, display_status)
+    meta["rows_returned"] = len(rows)
     rows = [compact(normalize_entity(r), verbose) for r in rows]
     by_display: dict[str, int] = {}
     for r in rows:
@@ -194,6 +204,8 @@ async def list_ad_groups(
     rows, meta = await ctx.client.paginate(
         "POST", "/v1/adgroups/query", budget=budget, account_id=account, json_body=body
     )
+    rows = _display_filter(rows, display_status)
+    meta["rows_returned"] = len(rows)
     rows = [compact(normalize_entity(r), verbose) for r in rows]
     automated = sum(1 for r in rows if r.get("automatedKeywordsOptIn"))
     return build_envelope(
@@ -205,6 +217,29 @@ async def list_ad_groups(
     )
 
 
+def _compact_keyword(k: dict[str, Any], negative: bool = False) -> dict[str, Any]:
+    """One chat-sized row per keyword (live: raw rows were ~270 B each; 284
+    keywords in one campaign exceeded what chat clients render)."""
+    bid = k.get("bid")
+    row: dict[str, Any] = {
+        "id": k.get("id"),
+        "adGroupId": k.get("adGroupId"),
+        "text": k.get("text"),
+        "matchType": k.get("matchType"),
+        "status": k.get("status"),
+    }
+    if negative:
+        row["negative"] = True
+        if k.get("adGroupId") is None:
+            row["campaignId"] = k.get("campaignId")
+    else:
+        row["bid"] = bid.get("amount") if isinstance(bid, dict) else bid
+        display = k.get("displayStatus")
+        if display and display not in ("RUNNING", "PAUSED"):
+            row["displayStatus"] = display  # e.g. AD_GROUP_ON_HOLD
+    return row
+
+
 async def list_keywords(
     ctx: AppContext,
     account_id: str | None = None,
@@ -212,72 +247,96 @@ async def list_keywords(
     ad_group_ids: list[str] | None = None,
     status: str | None = None,
     include_negative: bool = False,
+    text_contains: str | None = None,
+    limit: int = 300,
 ) -> dict[str, Any]:
     """Keywords (bid, match type, status); optionally negative keywords too.
 
-    Verified live (2026-09-22): the keywords query rejects ``campaignId IN
-    [...]`` ("campaignId condition must use EQUALS operator"), so this fans
-    out one EQUALS query per campaign and filters ad groups client-side.
+    Live-verified constraints (2026-09-22): ``/keywords/query`` rejects
+    ``campaignId IN [...]`` (EQUALS only) and ``/negative-keywords/query``
+    requires an ``adGroupId`` condition. So positive keywords are fetched
+    with one EQUALS query per campaign (or per ad group), and negatives with
+    one query per ad group — ad groups are resolved from the campaigns first
+    when only campaign_ids are given.
     """
     account = resolve_account(ctx.settings, account_id)
     check_entity_ids(campaign_ids, ctx.settings.max_entity_ids)
     check_entity_ids(ad_group_ids, ctx.settings.max_entity_ids)
+    if not campaign_ids and not ad_group_ids:
+        raise ValueError("list_keywords needs campaign_ids or ad_group_ids (Apple rejects account-wide keyword queries)")
     budget = ctx.guard(
         "list_keywords",
         {"account_id": account, "campaign_ids": campaign_ids, "ad_group_ids": ad_group_ids,
-         "status": status, "include_negative": include_negative},
+         "status": status, "include_negative": include_negative, "text_contains": text_contains, "limit": limit},
     )
     page = min(1000, ctx.settings.max_page_size)
-    base_filters = _status_filters(status, None)
-    wanted_ad_groups = {str(i) for i in ad_group_ids} if ad_group_ids else None
+    limit = max(1, min(limit, ctx.settings.max_report_rows))
+    base_filters = _status_filters(status)
+    if text_contains:
+        base_filters = base_filters + [{"field": "text", "operator": "LIKE", "value": text_contains, "ignoreCase": True}]
+    warnings: list[str] = []
+    meta: dict[str, Any] = {"pages_fetched": 0, "truncated": False, "source": "Apple Ads Platform API v1"}
 
-    async def fetch(path: str) -> tuple[list[dict], dict[str, Any], list[str]]:
-        rows: list[dict] = []
-        meta: dict[str, Any] = {"pages_fetched": 0, "truncated": False}
-        warnings: list[str] = []
-        scopes: list[list[dict[str, Any]]]
-        if campaign_ids:
-            scopes = [base_filters + _id_filter("campaignId", [cid]) for cid in campaign_ids]
-        elif ad_group_ids:
-            scopes = [base_filters + _id_filter("adGroupId", [gid]) for gid in ad_group_ids]
-        else:
-            scopes = [base_filters]
-        for scope in scopes:
-            body = entity_query(filters=scope, page_size=page, fetch_total_count=True)
-            part, part_meta = await ctx.client.paginate(
-                "POST", path, budget=budget, account_id=account, json_body=body
-            )
-            rows.extend(part)
-            meta["pages_fetched"] += part_meta.get("pages_fetched", 0)
-            meta["truncated"] = meta["truncated"] or bool(part_meta.get("truncated"))
-        if wanted_ad_groups is not None and campaign_ids:
-            rows = [r for r in rows if str(r.get("adGroupId")) in wanted_ad_groups]
-        if meta["truncated"]:
-            warnings.append(f"{path.rsplit('/', 2)[1]} list truncated; narrow by campaign_ids/ad_group_ids")
-        meta["rows_returned"] = len(rows)
-        meta["source"] = "Apple Ads Platform API v1"
-        return rows, meta, warnings
+    async def query(path: str, scope: list[dict[str, Any]]) -> list[dict]:
+        body = entity_query(filters=scope, page_size=page, fetch_total_count=True)
+        part, part_meta = await ctx.client.paginate("POST", path, budget=budget, account_id=account, json_body=body)
+        meta["pages_fetched"] += part_meta.get("pages_fetched", 0)
+        meta["truncated"] = meta["truncated"] or bool(part_meta.get("truncated"))
+        return part
 
-    rows, meta, warnings = await fetch("/v1/keywords/query")
-    rows = [compact(normalize_entity(r), False) for r in rows]
+    # Positive keywords
+    rows: list[dict] = []
+    if campaign_ids:
+        for cid in campaign_ids:
+            rows.extend(await query("/v1/keywords/query", base_filters + _id_filter("campaignId", [cid])))
+        if ad_group_ids:
+            wanted = {str(i) for i in ad_group_ids}
+            rows = [r for r in rows if str(r.get("adGroupId")) in wanted]
+    else:
+        for gid in ad_group_ids or []:
+            rows.extend(await query("/v1/keywords/query", base_filters + _id_filter("adGroupId", [gid])))
+
+    # Negative keywords: one query per ad group
     negatives: list[dict] = []
     if include_negative:
-        neg_rows, _, neg_warnings = await fetch("/v1/negative-keywords/query")
-        negatives = [compact(normalize_entity(r), False) for r in neg_rows]
-        warnings += neg_warnings
+        group_ids = [str(i) for i in ad_group_ids] if ad_group_ids else sorted({str(r.get("adGroupId")) for r in rows if r.get("adGroupId")})
+        if not group_ids and campaign_ids:
+            for cid in campaign_ids:
+                groups = await query("/v1/adgroups/query", _id_filter("campaignId", [cid]))
+                group_ids += [str(g["id"]) for g in groups]
+        remaining = ctx.settings.max_subrequests_per_call - budget.used
+        if len(group_ids) > remaining:
+            warnings.append(
+                f"negative keywords fetched for {remaining} of {len(group_ids)} ad groups (subrequest ceiling); "
+                "narrow with ad_group_ids for the rest"
+            )
+            group_ids = group_ids[:remaining]
+        for gid in group_ids:
+            negatives.extend(await query("/v1/negative-keywords/query", _status_filters(status) + _id_filter("adGroupId", [gid])))
+        warnings.append("campaign-level negative keywords are not returned by the per-ad-group query (Apple requires adGroupId); TODO-LIVE")
+
+    rows = [normalize_entity(r) for r in rows]
+    data = [_compact_keyword(r) for r in rows] + [_compact_keyword(n, negative=True) for n in negatives]
+    if len(data) > limit:
+        warnings.append(f"{len(data)} keywords match; returning the first {limit}. Narrow with ad_group_ids, text_contains or status, or raise limit.")
+        data = data[:limit]
+        meta["truncated"] = True
+    currency = next((r["bid"].get("currency") for r in rows if isinstance(r.get("bid"), dict)), None)
     by_match: dict[str, int] = {}
     for r in rows:
         key = str(r.get("matchType") or "UNKNOWN")
         by_match[key] = by_match.get(key, 0) + 1
-    data: dict[str, Any] = {"keywords": rows}
-    if include_negative:
-        data["negative_keywords"] = negatives
+    by_group: dict[str, int] = {}
+    for r in rows:
+        key = str(r.get("adGroupId"))
+        by_group[key] = by_group.get(key, 0) + 1
+    meta["rows_returned"] = len(data)
     return build_envelope(
         data=data,
         meta=meta,
         account_id=account,
-        summary={"keywords": len(rows), "by_match_type": by_match,
-                 "negative_keywords": len(negatives) if include_negative else None},
+        summary={"keywords": len(rows), "negative_keywords": len(negatives) if include_negative else None,
+                 "currency": currency, "by_match_type": by_match, "by_ad_group": by_group},
         warnings=warnings,
         max_response_bytes=ctx.settings.max_response_bytes,
     )

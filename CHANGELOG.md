@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.3 — second live round
+
+- `list_keywords`: requires campaign_ids or ad_group_ids; negative keywords
+  fetched per ad group (Apple requires `adGroupId`); compact one-line rows;
+  `text_contains` and `limit` (default 300) parameters.
+- `display_status` filters are applied locally on campaigns and ad groups —
+  Apple rejects `displayStatus` as a query field.
+- Response ceiling default lowered to 40 KB (`MAX_RESPONSE_BYTES` to
+  override): chat clients refuse larger tool results; the envelope now
+  truncates with a warning instead.
+- README status updated: Phase 1 live-verified.
+
 ## 0.1.2 — live-verification fixes
 
 - Reports: keyword and search-term levels now require a `campaignId` filter

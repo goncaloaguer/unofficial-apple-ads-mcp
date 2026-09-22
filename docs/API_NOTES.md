@@ -52,6 +52,14 @@ advertiser account. Items marked **TODO-LIVE** are Phase 1 acceptance items
    rejects `campaignId IN [...]` (`INVALID_INPUT: campaignId condition must
    use EQUALS operator`) while `/v1/adgroups/query` and `/v1/ads/query`
    accept IN. `list_keywords` fans out one EQUALS query per campaign.
+6b'. **More per-endpoint rules (L).** `/negative-keywords/query` requires an
+   `adGroupId` condition (`INVALID_INPUT: adGroupId condition is required`);
+   `list_keywords` resolves ad groups first and queries each. Whether
+   campaign-level negative keywords are reachable at all this way is
+   **TODO-LIVE**. `displayStatus` is not a queryable entity field
+   (`Field, displayStatus, is invalid`) — filtered locally. `status EQUALS`
+   and `name LIKE` (ignoreCase) work. Keyword `displayStatus` can be
+   `AD_GROUP_ON_HOLD` (inherited from the parent).
 6c. **Search-term privacy aggregate (L).** Rows with `searchTermText: null`
    are Apple's low-volume bucket (terms below the reporting threshold,
    aggregated per keyword). They still carry spend/taps/installs.
