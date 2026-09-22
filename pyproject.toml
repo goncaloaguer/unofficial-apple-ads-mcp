@@ -1,6 +1,6 @@
 [project]
 name = "apple-ads-insights-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "Read-only, analysis-first MCP server for the Apple Ads Platform API (App Store campaigns). Unofficial community project; not affiliated with, endorsed, or supported by Apple Inc."
 readme = "README.md"
 requires-python = ">=3.11"

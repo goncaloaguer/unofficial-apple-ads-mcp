@@ -255,21 +255,38 @@ async def startup_role_check(ctx: AppContext) -> list[str]:
     return warnings
 
 
+async def run_startup_check(settings: Settings, probe: AppContext | None = None) -> list[str]:
+    """Run the role check on a throwaway context and close it.
+
+    The check runs under its own ``asyncio.run`` loop before the server's
+    loop exists. Anything created inside it (httpx client, asyncio locks)
+    is bound to that loop, so the serving context must be a *fresh*
+    ``AppContext`` — reusing the probe context raised "Event loop is closed"
+    on the first tool call (live, 2026-09-22).
+    """
+    probe = probe or AppContext.create(settings)
+    try:
+        return await startup_role_check(probe)
+    finally:
+        await probe.client.aclose()
+
+
 def main() -> None:
     import asyncio
 
     settings = load_settings()
     for warning in settings.warnings:
         print(f"[config warning] {warning}", file=sys.stderr)
-    ctx = AppContext.create(settings)
 
-    role_warnings = asyncio.run(startup_role_check(ctx))
+    role_warnings = asyncio.run(run_startup_check(settings))
     for warning in role_warnings:
         print(f"[startup warning] {warning}", file=sys.stderr)
     if settings.require_readonly_role and any("may permit writes" in w for w in role_warnings):
         print("[startup] APPLE_ADS_REQUIRE_READONLY_ROLE=true and a write-capable role was found; refusing to start", file=sys.stderr)
         raise SystemExit(3)
 
+    # Fresh context for the serving loop — never reuse the probe (see run_startup_check).
+    ctx = AppContext.create(settings)
     mcp = build_server(ctx)
     if settings.transport == "stdio":
         mcp.run()

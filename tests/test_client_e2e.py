@@ -248,5 +248,68 @@ class ToolTests(ClientTests):
             await structure.list_campaigns(self.ctx)
 
 
+class StartupSequenceTests(unittest.TestCase):
+    """main() runs the role check in one asyncio.run loop and serves in another.
+
+    Regression for the live 2026-09-22 failure: reusing the probe context
+    across loops raised "Event loop is closed" on the first tool call.
+    """
+
+    def _ctx_with_fake(self, settings, fake):
+
+        ctx = AppContext.create(settings)
+        transport = httpx.MockTransport(fake.handler)
+        ctx.client._client = httpx.AsyncClient(base_url=settings.api_base_url, transport=transport)
+
+        async def fetch():
+            async with httpx.AsyncClient(transport=transport) as c:
+                resp = await c.post(settings.token_url, data={
+                    "grant_type": "client_credentials", "client_id": settings.apple_client_id,
+                    "client_secret": create_client_secret(settings), "scope": "searchadsorg"})
+                return resp.json()
+
+        ctx.client._tokens._fetch = fetch  # type: ignore[attr-defined]
+        return ctx
+
+    def test_probe_then_fresh_context_across_loops(self):
+        import asyncio
+
+        from apple_ads_mcp.app import run_startup_check
+
+        settings = load_settings(ENV)
+        fake = FakeApple()
+        probe = self._ctx_with_fake(settings, fake)
+        warnings = asyncio.run(run_startup_check(settings, probe))
+        self.assertEqual(warnings, [])  # fake ACL grants the read-only role
+        self.assertTrue(probe.client._client.is_closed)
+
+        serving = self._ctx_with_fake(settings, fake)  # what main() builds after the probe
+        out = asyncio.run(structure.list_ad_accounts(serving))
+        self.assertEqual([a["id"] for a in out["data"]], [123456789])
+
+    def test_probe_warns_on_write_capable_role(self):
+        import asyncio
+
+        from apple_ads_mcp.app import run_startup_check
+
+        settings = load_settings(ENV)
+        fake = FakeApple()
+        original = fake.handler
+
+        def handler(request):
+            resp = original(request)
+            if request.url.path == "/v1/acls":
+                body = resp.json()
+                body["result"]["acls"][0]["roles"] = ["API Campaign Manager"]
+                return httpx.Response(200, headers=fake.rate_headers, json=body)
+            return resp
+
+        fake.handler = handler
+        probe = self._ctx_with_fake(settings, fake)
+        warnings = asyncio.run(run_startup_check(settings, probe))
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("API Campaign Manager", warnings[0])
+
+
 if __name__ == "__main__":
     unittest.main()

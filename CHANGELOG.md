@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1
+
+- Fix: the startup role check ran in its own event loop and the same
+  context was reused for serving, so every tool call failed with "Event loop
+  is closed" (found on the first live call). The check now uses a throwaway
+  context; the server gets a fresh one. Regression test added.
+- Recognize `"API Campaign Read Only"` (the API's name for the UI's "API
+  Account Read Only"); live findings recorded in docs/API_NOTES.md.
+
 ## 0.1.0 (Phase 1 — private MVP)
 
 - Read-only MCP server for the Apple Ads Platform API (App Store campaigns).

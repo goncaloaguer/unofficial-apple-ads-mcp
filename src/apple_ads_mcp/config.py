@@ -64,7 +64,7 @@ class Settings:
     max_response_bytes: int = 2 * 1024 * 1024
     api_base_url: str = "https://api.ads.apple.com"  # registry paths carry the /v1 prefix
     token_url: str = "https://appleid.apple.com/auth/oauth2/token"
-    user_agent: str = "apple-ads-insights-mcp/0.1.0 (+https://github.com/goncaloaguer/unofficial-apple-ads-mcp)"
+    user_agent: str = "apple-ads-insights-mcp/0.1.1 (+https://github.com/goncaloaguer/unofficial-apple-ads-mcp)"
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
